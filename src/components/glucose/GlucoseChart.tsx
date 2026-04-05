@@ -14,7 +14,7 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import { useMemo } from "react";
-import { ChartPoint } from "@/types/glucose";
+import { ChartPoint, Thresholds } from "@/types/glucose";
 import { formatOptionalNumber } from "@/utils/format";
 
 type GlucoseChartProps = {
@@ -22,6 +22,7 @@ type GlucoseChartProps = {
   intervalMinutes: number;
   targetMin: number;
   targetMax: number;
+  thresholds: Thresholds;
   showGaps: boolean;
   showRange: boolean;
   singleDay?: boolean;
@@ -73,19 +74,20 @@ const COLOR_IN = "#3B78FF";
 const COLOR_LOW = "#FF9090";
 const COLOR_VERY_LOW = "#F12828";
 
-const colorForValue = (value: number | null) => {
+const colorForValue = (value: number | null, thresholds: Thresholds) => {
   if (value === null) return "hsl(var(--foreground))";
-  if (value >= 13.9) return COLOR_VERY_HIGH;
-  if (value > 10) return COLOR_HIGH;
-  if (value < 3) return COLOR_VERY_LOW;
-  if (value < 3.9) return COLOR_LOW;
+  if (value >= thresholds.veryHigh) return COLOR_VERY_HIGH;
+  if (value >= thresholds.high) return COLOR_HIGH;
+  if (value < thresholds.veryLow) return COLOR_VERY_LOW;
+  if (value < thresholds.targetLow) return COLOR_LOW;
   return COLOR_IN;
 };
 
 const ActiveDot = (props: any) => {
   const { cx, cy, payload } = props;
   if (cx === undefined || cy === undefined || !payload) return null;
-  const fill = colorForValue(payload.value ?? null);
+  const thresholds = payload.thresholds as Thresholds | undefined;
+  const fill = thresholds ? colorForValue(payload.value ?? null, thresholds) : "hsl(var(--foreground))";
   return <circle cx={cx} cy={cy} r={3} fill={fill} stroke="#fff" strokeWidth={1} />;
 };
 
@@ -96,6 +98,7 @@ export const GlucoseChart = ({
   intervalMinutes,
   targetMin,
   targetMax,
+  thresholds,
   showGaps,
   showRange,
   singleDay,
@@ -124,31 +127,28 @@ export const GlucoseChart = ({
             valueInRange: null,
             valueHigh: null,
             valueVeryHigh: null,
-            valueColor: null,
+            thresholds,
           };
         }
 
         return {
           ...point,
-          valueVeryLow: point.value <= 3 ? point.value : null,
-          valueLow: point.value < rangeMin && point.value > 3 ? point.value : null,
+          valueVeryLow: point.value < thresholds.veryLow ? point.value : null,
+          valueLow:
+            point.value >= thresholds.low && point.value < thresholds.targetLow
+              ? point.value
+              : null,
           valueInRange:
             point.value >= rangeMin && point.value <= rangeMax ? point.value : null,
-          valueHigh: point.value > rangeMax && point.value < 13.9 ? point.value : null,
-          valueVeryHigh: point.value >= 13.9 ? point.value : null,
-          valueColor:
-            point.value >= 13.9
-              ? COLOR_VERY_HIGH
-              : point.value > rangeMax
-                ? COLOR_HIGH
-                : point.value < 3
-                  ? COLOR_VERY_LOW
-                  : point.value < rangeMin
-                    ? COLOR_LOW
-                    : COLOR_IN,
+          valueHigh:
+            point.value > rangeMax && point.value < thresholds.veryHigh
+              ? point.value
+              : null,
+          valueVeryHigh: point.value >= thresholds.veryHigh ? point.value : null,
+          thresholds,
         };
       }),
-    [baseData, rangeMin, rangeMax]
+    [baseData, rangeMin, rangeMax, thresholds]
   );
   const hasAgp = baseData.some(
     (point) =>
@@ -309,7 +309,7 @@ export const GlucoseChart = ({
                 dot={false}
                 activeDot={false}
                 tooltipType="none"
-                connectNulls={!showGaps}
+                connectNulls={false}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 isAnimationActive={false}
@@ -322,7 +322,7 @@ export const GlucoseChart = ({
                 dot={false}
                 activeDot={false}
                 tooltipType="none"
-                connectNulls={!showGaps}
+                connectNulls={false}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 isAnimationActive={false}
@@ -335,7 +335,7 @@ export const GlucoseChart = ({
                 dot={false}
                 activeDot={false}
                 tooltipType="none"
-                connectNulls={!showGaps}
+                connectNulls={false}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 isAnimationActive={false}
@@ -348,7 +348,7 @@ export const GlucoseChart = ({
                 dot={false}
                 activeDot={false}
                 tooltipType="none"
-                connectNulls={!showGaps}
+                connectNulls={false}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 isAnimationActive={false}
@@ -361,7 +361,7 @@ export const GlucoseChart = ({
                 dot={false}
                 activeDot={false}
                 tooltipType="none"
-                connectNulls={!showGaps}
+                connectNulls={false}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 isAnimationActive={false}

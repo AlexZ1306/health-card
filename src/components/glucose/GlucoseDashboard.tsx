@@ -756,6 +756,7 @@ export const GlucoseDashboard = () => {
                   intervalMinutes={effectiveScale.minutes}
                   targetMin={thresholds.targetLow}
                   targetMax={thresholds.targetHigh}
+                  thresholds={thresholds}
                   showGaps={gapMode === "show"}
                   showRange={true}
                   singleDay={periodMode === "day" && !!activeBucket}
