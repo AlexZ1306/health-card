@@ -76,8 +76,10 @@ const COLOR_VERY_LOW = "#F12828";
 
 const colorForValue = (value: number | null, thresholds: Thresholds) => {
   if (value === null) return "hsl(var(--foreground))";
+  const highStart = Math.min(thresholds.high, thresholds.targetHigh);
   if (value >= thresholds.veryHigh) return COLOR_VERY_HIGH;
-  if (value >= thresholds.high) return COLOR_HIGH;
+  if (value >= highStart) return COLOR_HIGH;
+  if (value >= thresholds.targetLow) return COLOR_IN;
   if (value < thresholds.veryLow) return COLOR_VERY_LOW;
   if (value < thresholds.targetLow) return COLOR_LOW;
   return COLOR_IN;
@@ -96,10 +98,12 @@ const splitSegmentByThresholds = (
   p2: { timestamp: number; value: number },
   thresholds: Thresholds
 ) => {
+  const highStart = Math.min(thresholds.high, thresholds.targetHigh);
   const cuts = [
     thresholds.veryLow,
+    thresholds.low,
     thresholds.targetLow,
-    thresholds.targetHigh,
+    highStart,
     thresholds.veryHigh,
   ]
     .filter((value, index, arr) => arr.indexOf(value) === index)
@@ -386,7 +390,7 @@ export const GlucoseChart = ({
               {segments.map((segment) => (
                 <Line
                   key={`line-${segment.color}-${segment.data[0]?.timestamp ?? 0}-${segment.data.length}`}
-                  type="linear"
+                  type="monotone"
                   data={segment.data}
                   dataKey="value"
                   stroke={segment.color}
@@ -395,7 +399,7 @@ export const GlucoseChart = ({
                   activeDot={false}
                   tooltipType="none"
                   connectNulls={true}
-                  strokeLinecap="round"
+                  strokeLinecap="butt"
                   strokeLinejoin="round"
                   isAnimationActive={false}
                 />
