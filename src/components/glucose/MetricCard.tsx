@@ -12,9 +12,9 @@ type MetricCardProps = {
 export const MetricCard = ({ label, value, hint, tooltip }: MetricCardProps) => {
   return (
     <Card className="shadow-sm overflow-visible">
-      <CardContent className="relative flex h-full flex-col gap-2 p-4">
+      <CardContent className="relative flex h-full flex-col gap-1.5 p-3">
         <div className="flex items-start justify-between gap-2">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {label}
           </span>
           <div className="group relative">
@@ -26,8 +26,8 @@ export const MetricCard = ({ label, value, hint, tooltip }: MetricCardProps) => 
             </div>
           </div>
         </div>
-        <div className="text-2xl font-semibold text-foreground">{value}</div>
-        {hint ? <div className="text-xs text-muted-foreground">{hint}</div> : null}
+        <div className="text-xl font-semibold text-foreground">{value}</div>
+        {hint ? <div className="text-[11px] text-muted-foreground">{hint}</div> : null}
       </CardContent>
     </Card>
   );

@@ -759,9 +759,9 @@ export const GlucoseDashboard = () => {
             </Card>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
+          <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
             <TimeInRangeDonut data={timeInRange.buckets} total={timeInRange.total} />
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
               <MetricCard
                 label="eHbA1c"
                 value={ehbA1c === null ? "—" : `${formatOptionalNumber(ehbA1c, 1)}%`}
