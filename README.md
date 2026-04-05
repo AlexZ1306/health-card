@@ -1,5 +1,9 @@
 # Health Card — семейный дашборд диабета
 
+[![Deploy to GitHub Pages](https://github.com/AlexZ1306/health-card/actions/workflows/pages.yml/badge.svg)](https://github.com/AlexZ1306/health-card/actions/workflows/pages.yml)
+
+Демо: https://alexz1306.github.io/health-card/
+
 Минималистичный дашборд для контроля глюкозы с удобной навигацией по дням/неделям, фильтрами и управлением данными.
 
 ## Требования
