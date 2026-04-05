@@ -27,9 +27,13 @@ import {
   computeTitr,
   mergeAgpIntoSeries,
 } from "@/services/glucose/analytics";
+import {
+  DEFAULT_THRESHOLDS,
+  loadThresholds,
+} from "@/services/glucose/thresholds";
 import { createDemoGlucoseData } from "@/services/glucose/demo";
 import { formatOptionalNumber } from "@/utils/format";
-import type { GlucosePoint } from "@/types/glucose";
+import type { GlucosePoint, Thresholds } from "@/types/glucose";
 import {
   endOfMonth,
   endOfWeek,
@@ -43,8 +47,7 @@ export const GlucoseDashboard = () => {
   const [excelPoints, setExcelPoints] = useState<GlucosePoint[]>([]);
   const [manualPoints, setManualPoints] = useState<GlucosePoint[]>([]);
   const [scaleKey, setScaleKey] = useState("5m");
-  const targetMin = 7;
-  const targetMax = 10;
+  const [thresholds, setThresholds] = useState<Thresholds>(DEFAULT_THRESHOLDS);
   const [gapMode, setGapMode] = useState<"show" | "smooth">("show");
   const [periodMode, setPeriodMode] = useState<"day" | "week">("day");
   const [monthFilter, setMonthFilter] = useState(() => {
@@ -84,6 +87,7 @@ export const GlucoseDashboard = () => {
 
     const excel = parsePoints(storedExcel);
     const manual = parsePoints(storedManual);
+    const storedThresholds = loadThresholds();
 
     if (excel.length || manual.length) {
       setExcelPoints(excel);
@@ -91,6 +95,7 @@ export const GlucoseDashboard = () => {
     } else {
       setExcelPoints(createDemoGlucoseData());
     }
+    setThresholds(storedThresholds);
   }, []);
 
   useEffect(() => {
@@ -392,17 +397,20 @@ export const GlucoseDashboard = () => {
 
   const ehbA1c = useMemo(() => computeEhbA1c(meanValue), [meanValue]);
   const gmi = useMemo(() => computeGmi(meanValue), [meanValue]);
-  const titr = useMemo(() => computeTitr(filteredPoints), [filteredPoints]);
+  const titr = useMemo(() => computeTitr(filteredPoints, thresholds), [filteredPoints, thresholds]);
 
-  const timeInRange = useMemo(() => computeTimeInRange(filteredPoints), [filteredPoints]);
+  const timeInRange = useMemo(
+    () => computeTimeInRange(filteredPoints, thresholds),
+    [filteredPoints, thresholds]
+  );
 
   const hypoStats = useMemo(
-    () => computeEvents(filteredPoints, (value) => value < 3.9),
-    [filteredPoints]
+    () => computeEvents(filteredPoints, (value) => value < thresholds.targetLow),
+    [filteredPoints, thresholds]
   );
   const hyperStats = useMemo(
-    () => computeEvents(filteredPoints, (value) => value > 10),
-    [filteredPoints]
+    () => computeEvents(filteredPoints, (value) => value > thresholds.targetHigh),
+    [filteredPoints, thresholds]
   );
 
   const formatMissingDuration = (minutesTotal: number) => {
@@ -443,6 +451,7 @@ export const GlucoseDashboard = () => {
     const handleStorage = () => {
       const storedExcel = localStorage.getItem("glucose_excel_points");
       const storedManual = localStorage.getItem("glucose_manual_points");
+      const storedThresholds = loadThresholds();
 
       const parsePoints = (value: string | null) => {
         if (!value) return [];
@@ -458,6 +467,7 @@ export const GlucoseDashboard = () => {
 
       setExcelPoints(parsePoints(storedExcel));
       setManualPoints(parsePoints(storedManual));
+      setThresholds(storedThresholds);
     };
 
     window.addEventListener("storage", handleStorage);
@@ -744,8 +754,8 @@ export const GlucoseDashboard = () => {
                 <GlucoseChart
                   data={chartSeriesWithAgp}
                   intervalMinutes={effectiveScale.minutes}
-                  targetMin={targetMin}
-                  targetMax={targetMax}
+                  targetMin={thresholds.targetLow}
+                  targetMax={thresholds.targetHigh}
                   showGaps={gapMode === "show"}
                   showRange={true}
                   singleDay={periodMode === "day" && !!activeBucket}
@@ -787,16 +797,16 @@ export const GlucoseDashboard = () => {
                 value={meanValue === null ? "—" : `${formatOptionalNumber(meanValue, 1)} mmol/L`}
                 tooltip="Среднее арифметическое всех значений глюкозы за выбранный период"
               />
-              <MetricCard
-                label="Данные за период"
-                value={
-                  periodCompleteness.percent === null
-                    ? "—"
-                    : `${formatOptionalNumber(periodCompleteness.percent, 0)}%`
-                }
-                hint={periodCompleteness.missingLabel}
-                tooltip="Показывает полноту данных за выбранный период и длительность отсутствующих измерений"
-              />
+                <MetricCard
+                  label="Данные за период"
+                  value={
+                    periodCompleteness.percent === null
+                      ? "—"
+                      : `${formatOptionalNumber(periodCompleteness.percent, 0)}%`
+                  }
+                  hint={periodCompleteness.missingLabel}
+                  tooltip="Показывает полноту данных за выбранный период и длительность отсутствующих измерений"
+                />
             </div>
           </div>
 
@@ -807,13 +817,13 @@ export const GlucoseDashboard = () => {
               </CardHeader>
               <CardContent className="grid gap-4 text-sm text-muted-foreground">
                 <div className="flex items-center justify-between">
-                  <span>Гипогликемии (&lt; 3.9)</span>
+                  <span>Гипогликемии (&lt; {formatOptionalNumber(thresholds.targetLow, 1)})</span>
                   <span className="text-foreground">
                     {hypoStats.count} событий • {formatOptionalNumber(hypoStats.avgMinutes, 0)} мин
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Гипергликемии (&gt; 10.0)</span>
+                  <span>Гипергликемии (&gt; {formatOptionalNumber(thresholds.targetHigh, 1)})</span>
                   <span className="text-foreground">
                     {hyperStats.count} событий • {formatOptionalNumber(hyperStats.avgMinutes, 0)} мин
                   </span>

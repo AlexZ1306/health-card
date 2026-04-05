@@ -1,4 +1,4 @@
-import { GlucosePoint, ChartPoint } from "@/types/glucose";
+import { GlucosePoint, ChartPoint, Thresholds } from "@/types/glucose";
 
 export type TimeInRangeBucket = {
   key: string;
@@ -62,13 +62,31 @@ export const computeGmi = (mean: number | null) => {
   return 3.31 + 0.02392 * mean * 18;
 };
 
-export const computeTimeInRange = (points: GlucosePoint[]): TimeInRangeResult => {
+const formatThreshold = (value: number) =>
+  new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(value);
+
+export const computeTimeInRange = (
+  points: GlucosePoint[],
+  thresholds: Thresholds
+): TimeInRangeResult => {
   const total = points.length;
+  const veryHighLabel = `> ${formatThreshold(thresholds.veryHigh)}`;
+  const highLabel = `${formatThreshold(thresholds.high)} – ${formatThreshold(
+    thresholds.veryHigh
+  )}`;
+  const targetLabel = `${formatThreshold(thresholds.targetLow)} – ${formatThreshold(
+    thresholds.targetHigh
+  )}`;
+  const lowLabel = `${formatThreshold(thresholds.low)} – ${formatThreshold(
+    thresholds.targetLow
+  )}`;
+  const veryLowLabel = `< ${formatThreshold(thresholds.veryLow)}`;
+
   const buckets: TimeInRangeBucket[] = [
     {
       key: "very-high",
       label: "Очень высокий",
-      range: "> 13.9",
+      range: veryHighLabel,
       color: "rgba(194, 65, 12, 0.95)",
       count: 0,
       percent: 0,
@@ -76,7 +94,7 @@ export const computeTimeInRange = (points: GlucosePoint[]): TimeInRangeResult =>
     {
       key: "high",
       label: "Высокий",
-      range: "10.1 – 13.9",
+      range: highLabel,
       color: "rgba(245, 158, 11, 0.9)",
       count: 0,
       percent: 0,
@@ -84,7 +102,7 @@ export const computeTimeInRange = (points: GlucosePoint[]): TimeInRangeResult =>
     {
       key: "tir",
       label: "Целевой диапазон",
-      range: "3.9 – 10.0",
+      range: targetLabel,
       color: "rgba(16, 185, 129, 0.95)",
       count: 0,
       percent: 0,
@@ -92,7 +110,7 @@ export const computeTimeInRange = (points: GlucosePoint[]): TimeInRangeResult =>
     {
       key: "low",
       label: "Низкий",
-      range: "3.0 – 3.8",
+      range: lowLabel,
       color: "rgba(239, 68, 68, 0.9)",
       count: 0,
       percent: 0,
@@ -100,7 +118,7 @@ export const computeTimeInRange = (points: GlucosePoint[]): TimeInRangeResult =>
     {
       key: "very-low",
       label: "Очень низкий",
-      range: "< 3.0",
+      range: veryLowLabel,
       color: "rgba(185, 28, 28, 0.95)",
       count: 0,
       percent: 0,
@@ -108,13 +126,16 @@ export const computeTimeInRange = (points: GlucosePoint[]): TimeInRangeResult =>
   ];
 
   for (const point of points) {
-    if (point.value > 13.9) {
+    if (point.value > thresholds.veryHigh) {
       buckets[0].count += 1;
-    } else if (point.value > 10) {
+    } else if (point.value >= thresholds.high) {
       buckets[1].count += 1;
-    } else if (point.value >= 3.9) {
+    } else if (
+      point.value >= thresholds.targetLow &&
+      point.value <= thresholds.targetHigh
+    ) {
       buckets[2].count += 1;
-    } else if (point.value >= 3) {
+    } else if (point.value >= thresholds.low) {
       buckets[3].count += 1;
     } else {
       buckets[4].count += 1;
@@ -128,9 +149,12 @@ export const computeTimeInRange = (points: GlucosePoint[]): TimeInRangeResult =>
   return { total, buckets };
 };
 
-export const computeTitr = (points: GlucosePoint[]) => {
+export const computeTitr = (points: GlucosePoint[], thresholds: Thresholds) => {
   if (!points.length) return null;
-  const count = points.filter((point) => point.value >= 3.9 && point.value <= 7.8).length;
+  const upper = Math.min(7.8, thresholds.targetHigh);
+  const count = points.filter(
+    (point) => point.value >= thresholds.targetLow && point.value <= upper
+  ).length;
   return (count / points.length) * 100;
 };
 

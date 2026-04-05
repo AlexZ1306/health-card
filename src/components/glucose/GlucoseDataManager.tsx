@@ -10,7 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { parseExcelFile, parseManualText } from "@/services/glucose/parsers";
 import { normalizeGlucosePoints } from "@/services/glucose/normalize";
-import type { GlucosePoint } from "@/types/glucose";
+import type { GlucosePoint, Thresholds } from "@/types/glucose";
+import {
+  DEFAULT_THRESHOLDS,
+  loadThresholds,
+  saveThresholds,
+  validateThresholds,
+} from "@/services/glucose/thresholds";
 
 const STORAGE_KEYS = {
   excel: "glucose_excel_points",
@@ -53,6 +59,8 @@ export const GlucoseDataManager = () => {
   const [isParsing, setIsParsing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [thresholdDraft, setThresholdDraft] = useState<Thresholds>(DEFAULT_THRESHOLDS);
+  const [thresholdError, setThresholdError] = useState<string | null>(null);
 
   const normalized = useMemo(
     () => normalizeGlucosePoints([...excelPoints, ...manualPoints]),
@@ -63,6 +71,8 @@ export const GlucoseDataManager = () => {
     setExcelPoints(deserializePoints(localStorage.getItem(STORAGE_KEYS.excel)));
     setManualPoints(deserializePoints(localStorage.getItem(STORAGE_KEYS.manual)));
     setFileName(localStorage.getItem(STORAGE_KEYS.fileName));
+    const storedThresholds = loadThresholds();
+    setThresholdDraft(storedThresholds);
   }, []);
 
   const saveToStorage = (excel: GlucosePoint[], manual: GlucosePoint[], name: string | null) => {
@@ -95,6 +105,29 @@ export const GlucoseDataManager = () => {
     const parsed = parseManualText(manualText);
     setManualPoints(parsed);
     saveToStorage(excelPoints, parsed, fileName);
+  };
+
+  const applyThresholds = (next: Thresholds) => {
+    setThresholdDraft(next);
+    const error = validateThresholds(next);
+    if (error) {
+      setThresholdError(error);
+      return;
+    }
+    setThresholdError(null);
+    saveThresholds(next);
+  };
+
+  const updateThreshold = (key: keyof Thresholds, value: string) => {
+    const parsed = Number(value.replace(",", "."));
+    if (!Number.isFinite(parsed)) return;
+    applyThresholds({ ...thresholdDraft, [key]: parsed });
+  };
+
+  const resetThresholds = () => {
+    setThresholdError(null);
+    setThresholdDraft(DEFAULT_THRESHOLDS);
+    saveThresholds(DEFAULT_THRESHOLDS);
   };
 
   const handleFolderImport = async () => {
@@ -220,6 +253,96 @@ export const GlucoseDataManager = () => {
             <div className="flex items-center justify-between">
               <span>Невалидные</span>
               <span className="text-foreground">{normalized.invalidCount}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-base">Настройка целевых диапазонов</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 text-sm text-muted-foreground">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Очень высокий
+                </span>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={thresholdDraft.veryHigh}
+                  onChange={(event) => updateThreshold("veryHigh", event.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Высокий
+                </span>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={thresholdDraft.high}
+                  onChange={(event) => updateThreshold("high", event.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Верхняя граница цели
+                </span>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={thresholdDraft.targetHigh}
+                  onChange={(event) => updateThreshold("targetHigh", event.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Нижняя граница цели
+                </span>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={thresholdDraft.targetLow}
+                  onChange={(event) => updateThreshold("targetLow", event.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Низкий
+                </span>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={thresholdDraft.low}
+                  onChange={(event) => updateThreshold("low", event.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Очень низкий
+                </span>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={thresholdDraft.veryLow}
+                  onChange={(event) => updateThreshold("veryLow", event.target.value)}
+                />
+              </div>
+            </div>
+            {thresholdError ? (
+              <div className="rounded-md border border-dashed border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                {thresholdError}
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground">
+                Изменения применяются сразу и пересчитывают графики на дашборде.
+              </div>
+            )}
+            <div>
+              <Button variant="secondary" onClick={resetThresholds}>
+                Сбросить по умолчанию
+              </Button>
             </div>
           </CardContent>
         </Card>

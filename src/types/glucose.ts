@@ -7,6 +7,15 @@ export type GlucosePoint = {
   source: GlucoseSource;
 };
 
+export type Thresholds = {
+  veryHigh: number;
+  high: number;
+  targetLow: number;
+  targetHigh: number;
+  low: number;
+  veryLow: number;
+};
+
 export type NormalizedResult = {
   points: GlucosePoint[];
   invalidCount: number;
