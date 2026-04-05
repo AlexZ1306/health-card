@@ -300,6 +300,7 @@ export const GlucoseChart = ({
                 type="monotone"
                 dataKey="p10"
                 stackId="idr"
+                tooltipType="none"
                 stroke="none"
                 fill="transparent"
                 isAnimationActive={false}
@@ -308,6 +309,7 @@ export const GlucoseChart = ({
                 type="monotone"
                 dataKey="bandIdr"
                 stackId="idr"
+                tooltipType="none"
                 stroke="none"
                 fill="rgba(37, 99, 235, 0.08)"
                 isAnimationActive={false}
@@ -316,6 +318,7 @@ export const GlucoseChart = ({
                 type="monotone"
                 dataKey="p25"
                 stackId="iqr"
+                tooltipType="none"
                 stroke="none"
                 fill="transparent"
                 isAnimationActive={false}
@@ -324,6 +327,7 @@ export const GlucoseChart = ({
                 type="monotone"
                 dataKey="bandIqr"
                 stackId="iqr"
+                tooltipType="none"
                 stroke="none"
                 fill="rgba(37, 99, 235, 0.16)"
                 isAnimationActive={false}
@@ -331,6 +335,7 @@ export const GlucoseChart = ({
               <Line
                 type="monotone"
                 dataKey="p50"
+                tooltipType="none"
                 stroke="rgba(37, 99, 235, 0.7)"
                 strokeWidth={2}
                 dot={false}
@@ -352,22 +357,35 @@ export const GlucoseChart = ({
               isAnimationActive={false}
             />
           ) : (
-            segments.map((segment) => (
-              <Line
-                key={`line-${segment.color}-${segment.data[0]?.timestamp ?? 0}-${segment.data.length}`}
-                type="monotone"
-                data={segment.data}
+            <>
+              {segments.map((segment) => (
+                <Line
+                  key={`line-${segment.color}-${segment.data[0]?.timestamp ?? 0}-${segment.data.length}`}
+                  type="monotone"
+                  data={segment.data}
                 dataKey="value"
                 stroke={segment.color}
                 strokeWidth={2.6}
                 dot={false}
-                activeDot={{ r: 3 }}
+                activeDot={false}
+                tooltipType="none"
                 connectNulls={true}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 isAnimationActive={false}
               />
-            ))
+              ))}
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke="rgba(0,0,0,0)"
+                strokeWidth={0}
+                dot={false}
+                activeDot={{ r: 3, fill: "hsl(var(--foreground))", stroke: "#fff", strokeWidth: 1 }}
+                connectNulls={!showGaps}
+                isAnimationActive={false}
+              />
+            </>
           )}
         </LineChart>
       </ResponsiveContainer>
