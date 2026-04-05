@@ -37,7 +37,8 @@ const getTickFormat = (intervalMinutes: number, singleDay?: boolean) => {
 
 const GlucoseTooltip = ({ active, payload }: { active?: boolean; payload?: any[] }) => {
   if (!active || !payload?.length) return null;
-  const item = payload[0]?.payload as ChartPoint | undefined;
+  const valueItem = payload.find((entry) => entry?.dataKey === "value");
+  const item = (valueItem ?? payload[0])?.payload as ChartPoint | undefined;
   if (!item) return null;
 
   return (
@@ -344,6 +345,7 @@ export const GlucoseChart = ({
               stroke="rgba(37, 99, 235, 0.95)"
               strokeWidth={2.4}
               dot={false}
+              activeDot={{ r: 3 }}
               connectNulls={!showGaps}
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -359,6 +361,7 @@ export const GlucoseChart = ({
                 stroke={segment.color}
                 strokeWidth={2.6}
                 dot={false}
+                activeDot={{ r: 3 }}
                 connectNulls={true}
                 strokeLinecap="round"
                 strokeLinejoin="round"
