@@ -27,7 +27,7 @@ export const TimeInRangeDonut = ({ data, total }: TimeInRangeDonutProps) => {
       <CardHeader>
         <CardTitle className="text-base">Time In Range</CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-4 md:grid-cols-[260px_1fr]">
+      <CardContent className="flex flex-col gap-4">
         <div className="relative flex h-[260px] items-center justify-center">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -54,20 +54,25 @@ export const TimeInRangeDonut = ({ data, total }: TimeInRangeDonutProps) => {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 text-xs">
+        <div className="grid gap-2 text-xs sm:grid-cols-2">
           {data.map((slice) => (
-            <div key={slice.key} className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+            <div
+              key={slice.key}
+              className="flex items-start justify-between gap-3 rounded-lg border border-border/60 px-2.5 py-2"
+            >
+              <div className="flex min-w-0 items-start gap-2">
                 <span
-                  className="inline-flex h-3 w-3 rounded-full"
+                  className="mt-1 inline-flex h-3 w-3 shrink-0 rounded-full"
                   style={{ backgroundColor: slice.color }}
                 />
-                <div>
-                  <div className="text-sm text-foreground">{slice.label}</div>
-                  <div className="text-[11px] text-muted-foreground">{slice.range} mmol/L</div>
+                <div className="min-w-0">
+                  <div className="text-sm text-foreground leading-tight">{slice.label}</div>
+                  <div className="text-[11px] text-muted-foreground leading-tight">
+                    {slice.range} mmol/L
+                  </div>
                 </div>
               </div>
-              <div className="text-right">
+              <div className="shrink-0 text-right">
                 <div className="text-sm font-semibold text-foreground">
                   {total ? formatOptionalNumber(slice.percent, 0) : "—"}%
                 </div>
