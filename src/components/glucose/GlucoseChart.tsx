@@ -14,6 +14,7 @@ import {
   YAxis,
 } from "recharts";
 import { curveMonotoneX, line as d3Line } from "d3-shape";
+import { useId } from "react";
 import { format } from "date-fns";
 import { useMemo } from "react";
 import { ChartPoint, Thresholds } from "@/types/glucose";
@@ -95,135 +96,76 @@ const ActiveDot = (props: any) => {
   return <circle cx={cx} cy={cy} r={3} fill={fill} stroke="#fff" strokeWidth={1} />;
 };
 
-const splitSegmentByThresholds = (
-  p1: { timestamp: number; value: number },
-  p2: { timestamp: number; value: number },
-  thresholds: Thresholds
-) => {
-  const highStart = Math.min(thresholds.high, thresholds.targetHigh);
-  const cuts = [
-    thresholds.veryLow,
-    thresholds.low,
-    thresholds.targetLow,
-    highStart,
-    thresholds.veryHigh,
-  ]
-    .filter((value, index, arr) => arr.indexOf(value) === index)
-    .sort((a, b) => a - b);
-
-  const crossings: { t: number; value: number }[] = [];
-  const addCrossing = (threshold: number) => {
-    const v1 = p1.value;
-    const v2 = p2.value;
-    const diff1 = v1 - threshold;
-    const diff2 = v2 - threshold;
-    if (diff1 === 0 || diff2 === 0) return;
-    if (diff1 * diff2 < 0) {
-      const t = (threshold - v1) / (v2 - v1);
-      if (t > 0 && t < 1) crossings.push({ t, value: threshold });
-    }
-  };
-
-  cuts.forEach(addCrossing);
-
-  if (!crossings.length) {
-    return [
-      {
-        start: p1,
-        end: p2,
-        color: colorForValue((p1.value + p2.value) / 2, thresholds),
-      },
-    ];
-  }
-
-  crossings.sort((a, b) => a.t - b.t);
-  const points = [
-    p1,
-    ...crossings.map((cross) => ({
-      timestamp: p1.timestamp + (p2.timestamp - p1.timestamp) * cross.t,
-      value: cross.value,
-    })),
-    p2,
-  ];
-
-  const segments: { start: { timestamp: number; value: number }; end: { timestamp: number; value: number }; color: string }[] =
-    [];
-
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const start = points[i];
-    const end = points[i + 1];
-    const midValue = (start.value + end.value) / 2;
-    segments.push({
-      start,
-      end,
-      color: colorForValue(midValue, thresholds),
-    });
-  }
-
-  return segments;
-};
-
-const buildSegments = (
-  points: ChartPoint[],
-  thresholds: Thresholds,
-  showGaps: boolean
-) => {
-  const segments: { color: string; data: { timestamp: number; value: number }[] }[] = [];
-  let lastPoint: { timestamp: number; value: number } | null = null;
-
-  const pushSegment = (color: string, point: { timestamp: number; value: number }) => {
-    const current = segments[segments.length - 1];
-    if (current && current.color === color) {
-      current.data.push(point);
-    } else {
-      segments.push({ color, data: [point] });
-    }
-  };
-
-  for (const point of points) {
-    if (point.value === null) {
-      if (showGaps) {
-        lastPoint = null;
-      }
-      continue;
-    }
-
-    const currentPoint = { timestamp: point.timestamp, value: point.value };
-
-    if (!lastPoint) {
-      const color = colorForValue(currentPoint.value, thresholds);
-      pushSegment(color, currentPoint);
-      lastPoint = currentPoint;
-      continue;
-    }
-
-    const subSegments = splitSegmentByThresholds(lastPoint, currentPoint, thresholds);
-    for (const sub of subSegments) {
-      pushSegment(sub.color, sub.start);
-      pushSegment(sub.color, sub.end);
-    }
-
-    lastPoint = currentPoint;
-  }
-
-  return segments;
-};
-
 const ColoredSegments = ({
-  segments,
+  chunks,
+  thresholds,
   xAxisMap,
   yAxisMap,
 }: {
-  segments: { color: string; data: { timestamp: number; value: number }[] }[];
+  chunks: { timestamp: number; value: number }[][];
+  thresholds: Thresholds;
   xAxisMap?: Record<string, any>;
   yAxisMap?: Record<string, any>;
 }) => {
+  const clipId = useId();
   const xAxis = xAxisMap ? Object.values(xAxisMap)[0] : null;
   const yAxis = yAxisMap ? Object.values(yAxisMap)[0] : null;
   if (!xAxis || !yAxis) return null;
   const xScale = xAxis.scale;
   const yScale = yAxis.scale;
   if (!xScale || !yScale) return null;
+
+  const xRange = xScale.range ? xScale.range() : [0, 0];
+  const chartLeft = Math.min(xRange[0], xRange[1]);
+  const chartRight = Math.max(xRange[0], xRange[1]);
+  const chartWidth = chartRight - chartLeft;
+
+  const yRange = yScale.range ? yScale.range() : [0, 0];
+  const chartTop = Math.min(yRange[0], yRange[1]);
+  const chartBottom = Math.max(yRange[0], yRange[1]);
+
+  const bandRect = (min: number, max: number) => {
+    const top = max === Infinity ? chartTop : yScale(max);
+    const bottom = min === -Infinity ? chartBottom : yScale(min);
+    const y = Math.min(top, bottom);
+    const height = Math.abs(bottom - top);
+    return { y, height };
+  };
+
+  const highStart = Math.min(thresholds.high, thresholds.targetHigh);
+
+  const bands = [
+    {
+      key: "very-low",
+      color: COLOR_VERY_LOW,
+      min: -Infinity,
+      max: thresholds.veryLow,
+    },
+    {
+      key: "low",
+      color: COLOR_LOW,
+      min: thresholds.veryLow,
+      max: thresholds.targetLow,
+    },
+    {
+      key: "in-range",
+      color: COLOR_IN,
+      min: thresholds.targetLow,
+      max: thresholds.targetHigh,
+    },
+    {
+      key: "high",
+      color: COLOR_HIGH,
+      min: highStart,
+      max: thresholds.veryHigh,
+    },
+    {
+      key: "very-high",
+      color: COLOR_VERY_HIGH,
+      min: thresholds.veryHigh,
+      max: Infinity,
+    },
+  ];
 
   const pathBuilder = d3Line<{ timestamp: number; value: number }>()
     .x((d) => xScale(d.timestamp))
@@ -232,21 +174,35 @@ const ColoredSegments = ({
 
   return (
     <g>
-      {segments.map((segment, index) => {
-        const path = pathBuilder(segment.data);
-        if (!path) return null;
-        return (
-          <path
-            key={`${segment.color}-${index}`}
-            d={path}
-            fill="none"
-            stroke={segment.color}
-            strokeWidth={2.6}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        );
-      })}
+      <defs>
+        {bands.map((band) => {
+          const rect = bandRect(band.min, band.max);
+          return (
+            <clipPath key={band.key} id={`${clipId}-${band.key}`}>
+              <rect x={chartLeft} y={rect.y} width={chartWidth} height={rect.height} />
+            </clipPath>
+          );
+        })}
+      </defs>
+      {bands.map((band) => (
+        <g key={band.key} clipPath={`url(#${clipId}-${band.key})`}>
+          {chunks.map((chunk, index) => {
+            const path = pathBuilder(chunk);
+            if (!path) return null;
+            return (
+              <path
+                key={`${band.key}-${index}`}
+                d={path}
+                fill="none"
+                stroke={band.color}
+                strokeWidth={2.6}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            );
+          })}
+        </g>
+      ))}
     </g>
   );
 };
@@ -276,10 +232,22 @@ export const GlucoseChart = ({
   const rangeMin = Math.min(targetMin, targetMax);
   const rangeMax = Math.max(targetMin, targetMax);
   const baseData = showGaps ? data : data.filter((point) => point.value !== null);
-  const segments = useMemo(
-    () => buildSegments(baseData, thresholds, showGaps),
-    [baseData, thresholds, showGaps]
-  );
+  const lineChunks = useMemo(() => {
+    const chunks: { timestamp: number; value: number }[][] = [];
+    let current: { timestamp: number; value: number }[] = [];
+    for (const point of baseData) {
+      if (point.value === null) {
+        if (showGaps && current.length) {
+          chunks.push(current);
+          current = [];
+        }
+        continue;
+      }
+      current.push({ timestamp: point.timestamp, value: point.value });
+    }
+    if (current.length) chunks.push(current);
+    return chunks;
+  }, [baseData, showGaps]);
   const hasAgp = baseData.some(
     (point) =>
       point.p10 !== undefined &&
@@ -431,7 +399,7 @@ export const GlucoseChart = ({
             />
           ) : (
             <>
-              <Customized component={<ColoredSegments segments={segments} />} />
+              <Customized component={<ColoredSegments chunks={lineChunks} thresholds={thresholds} />} />
               <Line
                 type="monotone"
                 dataKey="value"
