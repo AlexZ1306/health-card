@@ -136,22 +136,10 @@ const ColoredSegments = ({
 
   const bands = [
     {
-      key: "very-low",
-      color: COLOR_VERY_LOW,
-      min: -Infinity,
-      max: thresholds.veryLow,
-    },
-    {
-      key: "low",
-      color: COLOR_LOW,
-      min: thresholds.veryLow,
-      max: thresholds.targetLow,
-    },
-    {
-      key: "in-range",
-      color: COLOR_IN,
-      min: thresholds.targetLow,
-      max: thresholds.targetHigh,
+      key: "very-high",
+      color: COLOR_VERY_HIGH,
+      min: thresholds.veryHigh,
+      max: Infinity,
     },
     {
       key: "high",
@@ -160,14 +148,26 @@ const ColoredSegments = ({
       max: thresholds.veryHigh,
     },
     {
-      key: "very-high",
-      color: COLOR_VERY_HIGH,
-      min: thresholds.veryHigh,
-      max: Infinity,
+      key: "in-range",
+      color: COLOR_IN,
+      min: thresholds.targetLow,
+      max: thresholds.targetHigh,
+    },
+    {
+      key: "low",
+      color: COLOR_LOW,
+      min: thresholds.veryLow,
+      max: thresholds.targetLow,
+    },
+    {
+      key: "very-low",
+      color: COLOR_VERY_LOW,
+      min: -Infinity,
+      max: thresholds.veryLow,
     },
   ];
 
-  const pathBuilder = d3Line<{ timestamp: number; value: number }>()
+  const basePathBuilder = d3Line<{ timestamp: number; value: number }>()
     .x((d) => xScale(d.timestamp))
     .y((d) => yScale(d.value))
     .curve(curveMonotoneX);
@@ -187,7 +187,7 @@ const ColoredSegments = ({
       {bands.map((band) => (
         <g key={band.key} clipPath={`url(#${clipId}-${band.key})`}>
           {chunks.map((chunk, index) => {
-            const path = pathBuilder(chunk);
+            const path = basePathBuilder(chunk);
             if (!path) return null;
             return (
               <path
