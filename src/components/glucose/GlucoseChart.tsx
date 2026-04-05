@@ -3,6 +3,7 @@
 import {
   Area,
   CartesianGrid,
+  Customized,
   Line,
   LineChart,
   ReferenceArea,
@@ -12,6 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { curveMonotoneX, line as d3Line } from "d3-shape";
 import { format } from "date-fns";
 import { useMemo } from "react";
 import { ChartPoint, Thresholds } from "@/types/glucose";
@@ -207,6 +209,48 @@ const buildSegments = (
   return segments;
 };
 
+const ColoredSegments = ({
+  segments,
+  xAxisMap,
+  yAxisMap,
+}: {
+  segments: { color: string; data: { timestamp: number; value: number }[] }[];
+  xAxisMap?: Record<string, any>;
+  yAxisMap?: Record<string, any>;
+}) => {
+  const xAxis = xAxisMap ? Object.values(xAxisMap)[0] : null;
+  const yAxis = yAxisMap ? Object.values(yAxisMap)[0] : null;
+  if (!xAxis || !yAxis) return null;
+  const xScale = xAxis.scale;
+  const yScale = yAxis.scale;
+  if (!xScale || !yScale) return null;
+
+  const pathBuilder = d3Line<{ timestamp: number; value: number }>()
+    .x((d) => xScale(d.timestamp))
+    .y((d) => yScale(d.value))
+    .curve(curveMonotoneX);
+
+  return (
+    <g>
+      {segments.map((segment, index) => {
+        const path = pathBuilder(segment.data);
+        if (!path) return null;
+        return (
+          <path
+            key={`${segment.color}-${index}`}
+            d={path}
+            fill="none"
+            stroke={segment.color}
+            strokeWidth={2.6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        );
+      })}
+    </g>
+  );
+};
+
 
 
 export const GlucoseChart = ({
@@ -374,7 +418,7 @@ export const GlucoseChart = ({
           ) : null}
           {simplified ? (
             <Line
-              type="linear"
+              type="monotone"
               dataKey="value"
               stroke={COLOR_IN}
               strokeWidth={2.4}
@@ -387,25 +431,9 @@ export const GlucoseChart = ({
             />
           ) : (
             <>
-              {segments.map((segment) => (
-                <Line
-                  key={`line-${segment.color}-${segment.data[0]?.timestamp ?? 0}-${segment.data.length}`}
-                  type="monotone"
-                  data={segment.data}
-                  dataKey="value"
-                  stroke={segment.color}
-                  strokeWidth={2.6}
-                  dot={false}
-                  activeDot={false}
-                  tooltipType="none"
-                  connectNulls={true}
-                  strokeLinecap="butt"
-                  strokeLinejoin="round"
-                  isAnimationActive={false}
-                />
-              ))}
+              <Customized component={<ColoredSegments segments={segments} />} />
               <Line
-                type="linear"
+                type="monotone"
                 dataKey="value"
                 stroke="rgba(0,0,0,0)"
                 strokeWidth={0}
