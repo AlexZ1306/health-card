@@ -1,6 +1,6 @@
 "use client";
 
-import { Pie, PieChart, Cell, ResponsiveContainer } from "recharts";
+import { Pie, PieChart, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatOptionalNumber } from "@/utils/format";
 
@@ -27,7 +27,7 @@ export const TimeInRangeDonut = ({ data, total }: TimeInRangeDonutProps) => {
       <CardHeader>
         <CardTitle className="text-base">Time In Range</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+      <CardContent className="flex flex-col gap-2">
         <div className="relative flex h-[260px] items-center justify-center">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -43,6 +43,30 @@ export const TimeInRangeDonut = ({ data, total }: TimeInRangeDonutProps) => {
                   <Cell key={slice.key} fill={slice.color} />
                 ))}
               </Pie>
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  const item = payload[0]?.payload as DonutSlice | undefined;
+                  if (!item) return null;
+                  return (
+                    <div className="rounded-lg border border-border bg-background/95 p-3 text-xs shadow-md">
+                      <div className="flex items-center gap-2 text-foreground">
+                        <span
+                          className="inline-flex h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: item.color }}
+                        />
+                        <span className="font-semibold">{item.label}</span>
+                      </div>
+                      <div className="mt-2 grid gap-1 text-muted-foreground">
+                        <div>{item.range} mmol/L</div>
+                        <div>
+                          {formatOptionalNumber(item.percent, 0)}% • {item.count} точек
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }}
+              />
             </PieChart>
           </ResponsiveContainer>
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
@@ -52,34 +76,6 @@ export const TimeInRangeDonut = ({ data, total }: TimeInRangeDonutProps) => {
               Цель &gt; 70%
             </div>
           </div>
-        </div>
-
-        <div className="grid gap-2 text-xs sm:grid-cols-2">
-          {data.map((slice) => (
-            <div
-              key={slice.key}
-              className="flex items-start justify-between gap-3 rounded-lg border border-border/60 px-2.5 py-2"
-            >
-              <div className="flex min-w-0 items-start gap-2">
-                <span
-                  className="mt-1 inline-flex h-3 w-3 shrink-0 rounded-full"
-                  style={{ backgroundColor: slice.color }}
-                />
-                <div className="min-w-0">
-                  <div className="text-sm text-foreground leading-tight">{slice.label}</div>
-                  <div className="text-[11px] text-muted-foreground leading-tight">
-                    {slice.range} mmol/L
-                  </div>
-                </div>
-              </div>
-              <div className="shrink-0 text-right">
-                <div className="text-sm font-semibold text-foreground">
-                  {total ? formatOptionalNumber(slice.percent, 0) : "—"}%
-                </div>
-                <div className="text-[11px] text-muted-foreground">{slice.count} точек</div>
-              </div>
-            </div>
-          ))}
         </div>
       </CardContent>
     </Card>
