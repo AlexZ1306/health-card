@@ -71,118 +71,7 @@ const COLOR_LOW = "rgba(239, 68, 68, 0.95)";
 const COLOR_IN = "rgba(37, 99, 235, 0.95)";
 const COLOR_HIGH = "rgba(245, 158, 11, 0.95)";
 
-const colorFor = (value: number, rangeMin: number, rangeMax: number) => {
-  if (value < rangeMin) return COLOR_LOW;
-  if (value > rangeMax) return COLOR_HIGH;
-  return COLOR_IN;
-};
 
-const splitSegmentByRange = (
-  p1: { timestamp: number; value: number },
-  p2: { timestamp: number; value: number },
-  rangeMin: number,
-  rangeMax: number
-) => {
-  const crossings: { t: number; value: number }[] = [];
-
-  const addCrossing = (threshold: number) => {
-    const v1 = p1.value;
-    const v2 = p2.value;
-    const diff1 = v1 - threshold;
-    const diff2 = v2 - threshold;
-    if (diff1 === 0 || diff2 === 0) return;
-    if (diff1 * diff2 < 0) {
-      const t = (threshold - v1) / (v2 - v1);
-      if (t > 0 && t < 1) crossings.push({ t, value: threshold });
-    }
-  };
-
-  addCrossing(rangeMin);
-  addCrossing(rangeMax);
-
-  if (!crossings.length) {
-    return [
-      {
-        start: p1,
-        end: p2,
-        color: colorFor((p1.value + p2.value) / 2, rangeMin, rangeMax),
-      },
-    ];
-  }
-
-  crossings.sort((a, b) => a.t - b.t);
-  const points = [
-    p1,
-    ...crossings.map((cross) => ({
-      timestamp: p1.timestamp + (p2.timestamp - p1.timestamp) * cross.t,
-      value: cross.value,
-    })),
-    p2,
-  ];
-
-  const segments: { start: { timestamp: number; value: number }; end: { timestamp: number; value: number }; color: string }[] =
-    [];
-
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const start = points[i];
-    const end = points[i + 1];
-    const midValue = (start.value + end.value) / 2;
-    segments.push({
-      start,
-      end,
-      color: colorFor(midValue, rangeMin, rangeMax),
-    });
-  }
-
-  return segments;
-};
-
-const buildSegments = (
-  points: ChartPoint[],
-  rangeMin: number,
-  rangeMax: number,
-  showGaps: boolean
-) => {
-  const segments: { color: string; data: { timestamp: number; value: number }[] }[] = [];
-  let lastPoint: { timestamp: number; value: number } | null = null;
-
-  const pushSegment = (color: string, point: { timestamp: number; value: number }) => {
-    const current = segments[segments.length - 1];
-    if (current && current.color === color) {
-      current.data.push(point);
-    } else {
-      segments.push({ color, data: [point] });
-    }
-  };
-
-  for (const point of points) {
-    if (point.value === null) {
-      if (showGaps) {
-        lastPoint = null;
-      }
-      continue;
-    }
-
-    const currentPoint = { timestamp: point.timestamp, value: point.value };
-
-    if (!lastPoint) {
-      const color = colorFor(currentPoint.value, rangeMin, rangeMax);
-      pushSegment(color, currentPoint);
-      lastPoint = currentPoint;
-      continue;
-    }
-
-    const subSegments = splitSegmentByRange(lastPoint, currentPoint, rangeMin, rangeMax);
-    for (const sub of subSegments) {
-      pushSegment(sub.color, sub.start);
-      pushSegment(sub.color, sub.end);
-    }
-
-    lastPoint = currentPoint;
-  }
-
-  return segments;
-};
 
 export const GlucoseChart = ({
   data,
@@ -206,7 +95,27 @@ export const GlucoseChart = ({
   const rangeMin = Math.min(targetMin, targetMax);
   const rangeMax = Math.max(targetMin, targetMax);
   const baseData = showGaps ? data : data.filter((point) => point.value !== null);
-  const segments = simplified ? [] : buildSegments(baseData, rangeMin, rangeMax, showGaps);
+  const coloredData = useMemo(
+    () =>
+      baseData.map((point) => {
+        if (point.value === null) {
+          return {
+            ...point,
+            valueLow: null,
+            valueInRange: null,
+            valueHigh: null,
+          };
+        }
+        return {
+          ...point,
+          valueLow: point.value < rangeMin ? point.value : null,
+          valueInRange:
+            point.value >= rangeMin && point.value <= rangeMax ? point.value : null,
+          valueHigh: point.value > rangeMax ? point.value : null,
+        };
+      }),
+    [baseData, rangeMin, rangeMax]
+  );
   const hasAgp = baseData.some(
     (point) =>
       point.p10 !== undefined &&
@@ -217,8 +126,8 @@ export const GlucoseChart = ({
   );
 
   const ticks = useMemo(() => {
-    if (!baseData.length) return [];
-    const timestamps = baseData.map((point) => point.timestamp);
+    if (!coloredData.length) return [];
+    const timestamps = coloredData.map((point) => point.timestamp);
     const min = Math.min(...timestamps);
     const max = Math.max(...timestamps);
     if (min === max) return [min];
@@ -252,7 +161,7 @@ export const GlucoseChart = ({
   return (
     <div className="h-[360px] w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={baseData}>
+        <LineChart data={coloredData}>
           <CartesianGrid strokeDasharray="4 6" stroke="hsl(var(--border))" />
           <XAxis
             dataKey="timestamp"
@@ -273,7 +182,7 @@ export const GlucoseChart = ({
             tickLine={false}
             width={40}
           />
-          <Tooltip content={<GlucoseTooltip />} />
+          <Tooltip content={<GlucoseTooltip />} shared={true} isAnimationActive={false} />
           {showRange ? (
             <>
               <ReferenceArea
@@ -358,30 +267,57 @@ export const GlucoseChart = ({
             />
           ) : (
             <>
-              {segments.map((segment) => (
-                <Line
-                  key={`line-${segment.color}-${segment.data[0]?.timestamp ?? 0}-${segment.data.length}`}
-                  type="monotone"
-                  data={segment.data}
-                dataKey="value"
-                stroke={segment.color}
+              <Line
+                type="monotone"
+                dataKey="valueLow"
+                stroke={COLOR_LOW}
                 strokeWidth={2.6}
                 dot={false}
                 activeDot={false}
                 tooltipType="none"
-                connectNulls={true}
+                connectNulls={!showGaps}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 isAnimationActive={false}
               />
-              ))}
+              <Line
+                type="monotone"
+                dataKey="valueInRange"
+                stroke={COLOR_IN}
+                strokeWidth={2.6}
+                dot={false}
+                activeDot={false}
+                tooltipType="none"
+                connectNulls={!showGaps}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                isAnimationActive={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="valueHigh"
+                stroke={COLOR_HIGH}
+                strokeWidth={2.6}
+                dot={false}
+                activeDot={false}
+                tooltipType="none"
+                connectNulls={!showGaps}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                isAnimationActive={false}
+              />
               <Line
                 type="monotone"
                 dataKey="value"
                 stroke="rgba(0,0,0,0)"
                 strokeWidth={0}
                 dot={false}
-                activeDot={{ r: 3, fill: "hsl(var(--foreground))", stroke: "#fff", strokeWidth: 1 }}
+                activeDot={{
+                  r: 3,
+                  fill: "hsl(var(--foreground))",
+                  stroke: "#fff",
+                  strokeWidth: 1,
+                }}
                 connectNulls={!showGaps}
                 isAnimationActive={false}
               />

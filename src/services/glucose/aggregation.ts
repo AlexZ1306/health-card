@@ -119,7 +119,7 @@ export const buildChartSeries = (
       }
       if (next && gapStart < next.timestamp) {
         seriesWithGaps.push({
-          timestamp: gapStart,
+          timestamp: gapStart + 1,
           value: null,
           avg: null,
           min: null,
