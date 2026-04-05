@@ -10,6 +10,15 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
 };
 
 const STORAGE_KEY = "glucose_thresholds";
+const MIN_ALLOWED = 0.1;
+const MAX_ALLOWED = 50;
+
+const sanitizeValue = (value: unknown, fallback: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  if (parsed < MIN_ALLOWED || parsed > MAX_ALLOWED) return fallback;
+  return parsed;
+};
 
 export const loadThresholds = (): Thresholds => {
   if (typeof window === "undefined") return DEFAULT_THRESHOLDS;
@@ -18,8 +27,12 @@ export const loadThresholds = (): Thresholds => {
   try {
     const parsed = JSON.parse(stored) as Partial<Thresholds>;
     return {
-      ...DEFAULT_THRESHOLDS,
-      ...parsed,
+      veryHigh: sanitizeValue(parsed.veryHigh, DEFAULT_THRESHOLDS.veryHigh),
+      high: sanitizeValue(parsed.high, DEFAULT_THRESHOLDS.high),
+      targetLow: sanitizeValue(parsed.targetLow, DEFAULT_THRESHOLDS.targetLow),
+      targetHigh: sanitizeValue(parsed.targetHigh, DEFAULT_THRESHOLDS.targetHigh),
+      low: sanitizeValue(parsed.low, DEFAULT_THRESHOLDS.low),
+      veryLow: sanitizeValue(parsed.veryLow, DEFAULT_THRESHOLDS.veryLow),
     };
   } catch {
     return DEFAULT_THRESHOLDS;
@@ -35,6 +48,9 @@ export const validateThresholds = (thresholds: Thresholds) => {
   const values = Object.values(thresholds);
   if (values.some((value) => !Number.isFinite(value))) {
     return "Все значения должны быть числами.";
+  }
+  if (values.some((value) => value < MIN_ALLOWED || value > MAX_ALLOWED)) {
+    return "Пороговые значения должны быть в диапазоне 0.1–50 ммоль/л.";
   }
   if (thresholds.veryLow > thresholds.low) {
     return "Очень низкий не может быть выше низкого.";

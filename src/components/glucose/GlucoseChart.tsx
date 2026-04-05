@@ -1,24 +1,24 @@
 "use client";
 
 import {
-  Area,
   CartesianGrid,
-  Customized,
   Line,
   LineChart,
   ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
+  usePlotArea,
+  useYAxisDomain,
   XAxis,
   YAxis,
 } from "recharts";
-import { curveMonotoneX, line as d3Line } from "d3-shape";
 import { useId } from "react";
 import { format } from "date-fns";
 import { useMemo } from "react";
 import { ChartPoint, Thresholds } from "@/types/glucose";
-import { formatOptionalNumber } from "@/utils/format";
+import { formatNumber, formatOptionalNumber } from "@/utils/format";
+import { DEFAULT_THRESHOLDS } from "@/services/glucose/thresholds";
 
 type GlucoseChartProps = {
   data: ChartPoint[];
@@ -39,11 +39,22 @@ const getTickFormat = (intervalMinutes: number, singleDay?: boolean) => {
   return "HH:mm";
 };
 
-const GlucoseTooltip = ({ active, payload }: { active?: boolean; payload?: any[] }) => {
+const GlucoseTooltip = ({
+  active,
+  payload,
+  intervalMinutes,
+}: {
+  active?: boolean;
+  payload?: any[];
+  intervalMinutes: number;
+}) => {
   if (!active || !payload?.length) return null;
   const valueItem = payload.find((entry) => entry?.dataKey === "value");
   const item = (valueItem ?? payload[0])?.payload as ChartPoint | undefined;
   if (!item) return null;
+  const thresholds = item.thresholds as Thresholds | undefined;
+  const valueColor = thresholds ? colorForValue(item.value ?? null, thresholds) : undefined;
+  const showAggregates = intervalMinutes > 5;
 
   return (
     <div className="rounded-lg border border-border bg-background/95 p-3 text-sm shadow-sm">
@@ -51,16 +62,16 @@ const GlucoseTooltip = ({ active, payload }: { active?: boolean; payload?: any[]
         {format(new Date(item.timestamp), "dd.MM.yyyy HH:mm")}
       </div>
       <div className="mt-2 grid gap-1">
-        <div className="font-semibold text-foreground">
+        <div className="font-semibold text-foreground" style={valueColor ? { color: valueColor } : undefined}>
           {item.value === null ? "Нет данных" : `${formatOptionalNumber(item.value)} mmol/L`}
         </div>
-        {item.value !== null && (
+        {showAggregates && item.value !== null && (
           <div className="text-xs text-muted-foreground">
             avg {formatOptionalNumber(item.avg)} • min {formatOptionalNumber(item.min)} • max{" "}
             {formatOptionalNumber(item.max)}
           </div>
         )}
-        {item.count !== null && (
+        {showAggregates && item.count !== null && (
           <div className="text-xs text-muted-foreground">точек: {item.count}</div>
         )}
         {item.hasGap && (
@@ -71,19 +82,13 @@ const GlucoseTooltip = ({ active, payload }: { active?: boolean; payload?: any[]
   );
 };
 
-const COLOR_VERY_HIGH = "#FFB800";
-const COLOR_HIGH = "#FFDD86";
-const COLOR_IN = "#3B78FF";
-const COLOR_LOW = "#FF9090";
-const COLOR_VERY_LOW = "#F12828";
+const COLOR_HIGH = "#FFB800";
+const COLOR_IN = "#3B79FF";
+const COLOR_LOW = "#D61B20";
 
 const colorForValue = (value: number | null, thresholds: Thresholds) => {
   if (value === null) return "hsl(var(--foreground))";
-  const highStart = Math.min(thresholds.high, thresholds.targetHigh);
-  if (value >= thresholds.veryHigh) return COLOR_VERY_HIGH;
-  if (value >= highStart) return COLOR_HIGH;
-  if (value >= thresholds.targetLow) return COLOR_IN;
-  if (value < thresholds.veryLow) return COLOR_VERY_LOW;
+  if (value > thresholds.targetHigh) return COLOR_HIGH;
   if (value < thresholds.targetLow) return COLOR_LOW;
   return COLOR_IN;
 };
@@ -96,118 +101,61 @@ const ActiveDot = (props: any) => {
   return <circle cx={cx} cy={cy} r={3} fill={fill} stroke="#fff" strokeWidth={1} />;
 };
 
-const ColoredSegments = ({
-  chunks,
+const isFiniteNumber = (value: number | null | undefined): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+const clampThreshold = (value: number) => Math.min(50, Math.max(0.1, value));
+
+const ThresholdGradient = ({
+  id,
   thresholds,
-  xAxisMap,
-  yAxisMap,
+  fallbackDomain,
 }: {
-  chunks: { timestamp: number; value: number }[][];
+  id: string;
   thresholds: Thresholds;
-  xAxisMap?: Record<string, any>;
-  yAxisMap?: Record<string, any>;
+  fallbackDomain: [number, number];
 }) => {
-  const clipId = useId();
-  const xAxis = xAxisMap ? Object.values(xAxisMap)[0] : null;
-  const yAxis = yAxisMap ? Object.values(yAxisMap)[0] : null;
-  if (!xAxis || !yAxis) return null;
-  const xScale = xAxis.scale;
-  const yScale = yAxis.scale;
-  if (!xScale || !yScale) return null;
+  const plotArea = usePlotArea();
+  const domain = useYAxisDomain();
+  if (!plotArea) {
+    return null;
+  }
+  const sourceDomain = Array.isArray(domain) && domain.length >= 2 ? domain : fallbackDomain;
+  const d0 = Number(sourceDomain[0]);
+  const d1 = Number(sourceDomain[1]);
+  if (!Number.isFinite(d0) || !Number.isFinite(d1) || d0 === d1) {
+    return null;
+  }
+  const min = Math.min(d0, d1);
+  const max = Math.max(d0, d1);
+  const chartTop = plotArea.y;
+  const chartBottom = plotArea.y + plotArea.height;
 
-  const xRange = xScale.range ? xScale.range() : [0, 0];
-  const chartLeft = Math.min(xRange[0], xRange[1]);
-  const chartRight = Math.max(xRange[0], xRange[1]);
-  const chartWidth = chartRight - chartLeft;
-
-  const yRange = yScale.range ? yScale.range() : [0, 0];
-  const chartTop = Math.min(yRange[0], yRange[1]);
-  const chartBottom = Math.max(yRange[0], yRange[1]);
-
-  const bandRect = (min: number, max: number) => {
-    const top = max === Infinity ? chartTop : yScale(max);
-    const bottom = min === -Infinity ? chartBottom : yScale(min);
-    const y = Math.min(top, bottom);
-    const height = Math.abs(bottom - top);
-    return { y, height };
-  };
-
-  const highStart = Math.min(thresholds.high, thresholds.targetHigh);
-
-  const bands = [
-    {
-      key: "very-high",
-      color: COLOR_VERY_HIGH,
-      min: thresholds.veryHigh,
-      max: Infinity,
-    },
-    {
-      key: "high",
-      color: COLOR_HIGH,
-      min: highStart,
-      max: thresholds.veryHigh,
-    },
-    {
-      key: "in-range",
-      color: COLOR_IN,
-      min: thresholds.targetLow,
-      max: thresholds.targetHigh,
-    },
-    {
-      key: "low",
-      color: COLOR_LOW,
-      min: thresholds.veryLow,
-      max: thresholds.targetLow,
-    },
-    {
-      key: "very-low",
-      color: COLOR_VERY_LOW,
-      min: -Infinity,
-      max: thresholds.veryLow,
-    },
-  ];
-
-  const basePathBuilder = d3Line<{ timestamp: number; value: number }>()
-    .x((d) => xScale(d.timestamp))
-    .y((d) => yScale(d.value))
-    .curve(curveMonotoneX);
+  const offset = (value: number) => clamp01((max - value) / (max - min));
+  const tHigh = offset(thresholds.targetHigh);
+  const tLow = offset(thresholds.targetLow);
 
   return (
-    <g>
-      <defs>
-        {bands.map((band) => {
-          const rect = bandRect(band.min, band.max);
-          return (
-            <clipPath key={band.key} id={`${clipId}-${band.key}`}>
-              <rect x={chartLeft} y={rect.y} width={chartWidth} height={rect.height} />
-            </clipPath>
-          );
-        })}
-      </defs>
-      {bands.map((band) => (
-        <g key={band.key} clipPath={`url(#${clipId}-${band.key})`}>
-          {chunks.map((chunk, index) => {
-            const path = basePathBuilder(chunk);
-            if (!path) return null;
-            return (
-              <path
-                key={`${band.key}-${index}`}
-                d={path}
-                fill="none"
-                stroke={band.color}
-                strokeWidth={2.6}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            );
-          })}
-        </g>
-      ))}
-    </g>
+    <defs>
+      <linearGradient
+        id={id}
+        gradientUnits="userSpaceOnUse"
+        x1="0"
+        y1={chartTop}
+        x2="0"
+        y2={chartBottom}
+      >
+        <stop offset="0" stopColor={COLOR_HIGH} />
+        <stop offset={tHigh} stopColor={COLOR_HIGH} />
+        <stop offset={tHigh} stopColor={COLOR_IN} />
+        <stop offset={tLow} stopColor={COLOR_IN} />
+        <stop offset={tLow} stopColor={COLOR_LOW} />
+        <stop offset="1" stopColor={COLOR_LOW} />
+      </linearGradient>
+    </defs>
   );
 };
-
-
 
 export const GlucoseChart = ({
   data,
@@ -229,33 +177,50 @@ export const GlucoseChart = ({
   }
 
   const tickFormat = getTickFormat(intervalMinutes, singleDay);
-  const rangeMin = Math.min(targetMin, targetMax);
-  const rangeMax = Math.max(targetMin, targetMax);
   const baseData = showGaps ? data : data.filter((point) => point.value !== null);
-  const lineChunks = useMemo(() => {
-    const chunks: { timestamp: number; value: number }[][] = [];
-    let current: { timestamp: number; value: number }[] = [];
-    for (const point of baseData) {
-      if (point.value === null) {
-        if (showGaps && current.length) {
-          chunks.push(current);
-          current = [];
-        }
-        continue;
-      }
-      current.push({ timestamp: point.timestamp, value: point.value });
+  const gradientId = `glucose-gradient-${useId().replace(/:/g, "")}`;
+  const safeThresholds = useMemo(() => {
+    const values = Object.values(thresholds);
+    if (values.some((value) => !Number.isFinite(value))) {
+      return DEFAULT_THRESHOLDS;
     }
-    if (current.length) chunks.push(current);
-    return chunks;
-  }, [baseData, showGaps]);
-  const hasAgp = baseData.some(
-    (point) =>
-      point.p10 !== undefined &&
-      point.p25 !== undefined &&
-      point.p50 !== undefined &&
-      point.p75 !== undefined &&
-      point.p90 !== undefined
-  );
+    return {
+      veryHigh: clampThreshold(thresholds.veryHigh),
+      high: clampThreshold(thresholds.high),
+      targetLow: clampThreshold(thresholds.targetLow),
+      targetHigh: clampThreshold(thresholds.targetHigh),
+      low: clampThreshold(thresholds.low),
+      veryLow: clampThreshold(thresholds.veryLow),
+    };
+  }, [thresholds]);
+  const rangeMin = Math.min(safeThresholds.targetLow, safeThresholds.targetHigh);
+  const rangeMax = Math.max(safeThresholds.targetLow, safeThresholds.targetHigh);
+  const [domainMin, domainMax] = useMemo(() => {
+    const values: number[] = [];
+    for (const point of baseData) {
+      if (isFiniteNumber(point.value)) values.push(point.value);
+      if (isFiniteNumber(point.min)) values.push(point.min);
+      if (isFiniteNumber(point.max)) values.push(point.max);
+    }
+    const fallbackMin = thresholds.veryLow ?? 0;
+    const fallbackMax = thresholds.veryHigh ?? 1;
+    const minValue = values.length ? Math.min(...values) : fallbackMin;
+    const maxValue = values.length ? Math.max(...values) : fallbackMax;
+    const withThresholdsMin = Math.min(
+      minValue,
+      safeThresholds.veryLow,
+      safeThresholds.low,
+      safeThresholds.targetLow
+    );
+    const withThresholdsMax = Math.max(
+      maxValue,
+      safeThresholds.veryHigh,
+      safeThresholds.high,
+      safeThresholds.targetHigh
+    );
+    const pad = Math.max(0.5, (withThresholdsMax - withThresholdsMin) * 0.05);
+    return [withThresholdsMin - pad, withThresholdsMax + pad];
+  }, [baseData, safeThresholds]);
 
   const ticks = useMemo(() => {
     if (!baseData.length) return [];
@@ -293,7 +258,12 @@ export const GlucoseChart = ({
   return (
     <div className="h-[360px] w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={baseData.map((point) => ({ ...point, thresholds }))}>
+        <LineChart data={baseData.map((point) => ({ ...point, thresholds: safeThresholds }))}>
+          <ThresholdGradient
+            id={gradientId}
+            thresholds={safeThresholds}
+            fallbackDomain={[domainMin, domainMax]}
+          />
           <CartesianGrid strokeDasharray="4 6" stroke="hsl(var(--border))" />
           <XAxis
             dataKey="timestamp"
@@ -310,11 +280,18 @@ export const GlucoseChart = ({
           />
           <YAxis
             tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+            tickFormatter={(value) => formatNumber(value, 1)}
             axisLine={false}
             tickLine={false}
             width={40}
+            domain={[domainMin, domainMax]}
+            allowDataOverflow
           />
-          <Tooltip content={<GlucoseTooltip />} shared={true} isAnimationActive={false} />
+          <Tooltip
+            content={<GlucoseTooltip intervalMinutes={intervalMinutes} />}
+            shared={true}
+            isAnimationActive={false}
+          />
           {showRange ? (
             <>
               <ReferenceArea
@@ -335,60 +312,11 @@ export const GlucoseChart = ({
               />
             </>
           ) : null}
-          {hasAgp ? (
-            <>
-              <Area
-                type="monotone"
-                dataKey="p10"
-                stackId="idr"
-                tooltipType="none"
-                stroke="none"
-                fill="transparent"
-                isAnimationActive={false}
-              />
-              <Area
-                type="monotone"
-                dataKey="bandIdr"
-                stackId="idr"
-                tooltipType="none"
-                stroke="none"
-                fill="rgba(37, 99, 235, 0.08)"
-                isAnimationActive={false}
-              />
-              <Area
-                type="monotone"
-                dataKey="p25"
-                stackId="iqr"
-                tooltipType="none"
-                stroke="none"
-                fill="transparent"
-                isAnimationActive={false}
-              />
-              <Area
-                type="monotone"
-                dataKey="bandIqr"
-                stackId="iqr"
-                tooltipType="none"
-                stroke="none"
-                fill="rgba(37, 99, 235, 0.16)"
-                isAnimationActive={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="p50"
-                tooltipType="none"
-                stroke="rgba(37, 99, 235, 0.7)"
-                strokeWidth={2}
-                dot={false}
-                isAnimationActive={false}
-              />
-            </>
-          ) : null}
           {simplified ? (
             <Line
               type="monotone"
               dataKey="value"
-              stroke={COLOR_IN}
+              stroke={`url(#${gradientId})`}
               strokeWidth={2.4}
               dot={false}
               activeDot={<ActiveDot />}
@@ -399,12 +327,11 @@ export const GlucoseChart = ({
             />
           ) : (
             <>
-              <Customized component={<ColoredSegments chunks={lineChunks} thresholds={thresholds} />} />
               <Line
                 type="monotone"
                 dataKey="value"
-                stroke="rgba(0,0,0,0)"
-                strokeWidth={0}
+                stroke={`url(#${gradientId})`}
+                strokeWidth={2.6}
                 dot={false}
                 activeDot={<ActiveDot />}
                 connectNulls={!showGaps}

@@ -16,6 +16,10 @@ export const AGGREGATION_OPTIONS: AggregationOption[] = [
   { key: "3h", label: "3 часа", minutes: 180 },
   { key: "6h", label: "6 часов", minutes: 360 },
   { key: "1d", label: "1 день", minutes: 1440 },
+  { key: "3d", label: "3 дня", minutes: 4320 },
+  { key: "7d", label: "7 дней", minutes: 10080 },
+  { key: "14d", label: "14 дней", minutes: 20160 },
+  { key: "1mo", label: "1 месяц", minutes: 43200 },
 ];
 
 const getBucketStart = (time: Date, minutes: number) => {
