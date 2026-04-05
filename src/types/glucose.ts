@@ -41,4 +41,11 @@ export type ChartPoint = {
   valueInRange?: number | null;
   valueLow?: number | null;
   valueHigh?: number | null;
+  p10?: number;
+  p25?: number;
+  p50?: number;
+  p75?: number;
+  p90?: number;
+  bandIqr?: number;
+  bandIdr?: number;
 };

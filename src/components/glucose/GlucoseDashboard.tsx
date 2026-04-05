@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { GlucoseChart } from "@/components/glucose/GlucoseChart";
-import { StatCard } from "@/components/glucose/StatCard";
+import { TimeInRangeDonut } from "@/components/glucose/TimeInRangeDonut";
+import { MetricCard } from "@/components/glucose/MetricCard";
 import { normalizeGlucosePoints } from "@/services/glucose/normalize";
 import { detectGaps } from "@/services/glucose/gaps";
 import {
@@ -15,6 +16,17 @@ import {
   aggregateGlucosePoints,
   buildChartSeries,
 } from "@/services/glucose/aggregation";
+import {
+  computeAgpStats,
+  computeEhbA1c,
+  computeEvents,
+  computeGmi,
+  computeMean,
+  computeStdDev,
+  computeTimeInRange,
+  computeTitr,
+  mergeAgpIntoSeries,
+} from "@/services/glucose/analytics";
 import { createDemoGlucoseData } from "@/services/glucose/demo";
 import { formatOptionalNumber } from "@/utils/format";
 import type { GlucosePoint } from "@/types/glucose";
@@ -365,49 +377,33 @@ export const GlucoseDashboard = () => {
     () => buildChartSeries(aggregated, gaps, gapMode === "show"),
     [aggregated, gaps, gapMode]
   );
+  const agpStats = useMemo(() => computeAgpStats(filteredPoints, 5), [filteredPoints]);
+  const chartSeriesWithAgp = useMemo(
+    () => mergeAgpIntoSeries(chartSeries, agpStats, 5),
+    [chartSeries, agpStats]
+  );
 
-  const rangeMin = Math.min(targetMin, targetMax);
-  const rangeMax = Math.max(targetMin, targetMax);
+  const meanValue = useMemo(() => computeMean(filteredPoints), [filteredPoints]);
+  const stdDev = useMemo(() => computeStdDev(filteredPoints, meanValue), [filteredPoints, meanValue]);
+  const cv = useMemo(() => {
+    if (meanValue === null || stdDev === null || meanValue === 0) return null;
+    return (stdDev / meanValue) * 100;
+  }, [meanValue, stdDev]);
 
-  const stats = useMemo(() => {
-    if (!aggregated.length) {
-      return {
-        current: null,
-        min: null,
-        max: null,
-        avg: null,
-        total: 0,
-      };
-    }
+  const ehbA1c = useMemo(() => computeEhbA1c(meanValue), [meanValue]);
+  const gmi = useMemo(() => computeGmi(meanValue), [meanValue]);
+  const titr = useMemo(() => computeTitr(filteredPoints), [filteredPoints]);
 
-    const total = aggregated.reduce((sum, item) => sum + item.count, 0);
-    const min = Math.min(...aggregated.map((item) => item.min));
-    const max = Math.max(...aggregated.map((item) => item.max));
-    const weightedAvg =
-      aggregated.reduce((sum, item) => sum + item.avg * item.count, 0) / Math.max(total, 1);
+  const timeInRange = useMemo(() => computeTimeInRange(filteredPoints), [filteredPoints]);
 
-    return {
-      current: aggregated[aggregated.length - 1].avg,
-      min,
-      max,
-      avg: weightedAvg,
-      total,
-    };
-  }, [aggregated]);
-
-  const rangeStats = useMemo(() => {
-    if (!filteredPoints.length) {
-      return { inRangeCount: 0, total: 0, percent: 0 };
-    }
-
-    const inRangeCount = filteredPoints.filter(
-      (point) => point.value >= rangeMin && point.value <= rangeMax
-    ).length;
-
-    const total = filteredPoints.length;
-    const percent = (inRangeCount / total) * 100;
-    return { inRangeCount, total, percent };
-  }, [filteredPoints, rangeMin, rangeMax]);
+  const hypoStats = useMemo(
+    () => computeEvents(filteredPoints, (value) => value < 3.9),
+    [filteredPoints]
+  );
+  const hyperStats = useMemo(
+    () => computeEvents(filteredPoints, (value) => value > 10),
+    [filteredPoints]
+  );
 
   const formatMissingDuration = (minutesTotal: number) => {
     if (!Number.isFinite(minutesTotal) || minutesTotal <= 0) {
@@ -746,7 +742,7 @@ export const GlucoseDashboard = () => {
               </CardHeader>
               <CardContent>
                 <GlucoseChart
-                  data={chartSeries}
+                  data={chartSeriesWithAgp}
                   intervalMinutes={effectiveScale.minutes}
                   targetMin={targetMin}
                   targetMax={targetMax}
@@ -755,51 +751,87 @@ export const GlucoseDashboard = () => {
                   singleDay={periodMode === "day" && !!activeBucket}
                   simplified={false}
                 />
+                <div className="mt-3 text-xs text-muted-foreground">
+                  AGP отражает типичный день. Чем более пологая медианная кривая и уже
+                  затененные зоны, тем выше стабильность.
+                </div>
               </CardContent>
             </Card>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-            <StatCard
-              label="Текущее"
-              value={
-                stats.current === null ? "—" : `${formatOptionalNumber(stats.current)}`
-              }
-              hint="mmol/L"
-            />
-            <StatCard
-              label="Мин"
-              value={stats.min === null ? "—" : formatOptionalNumber(stats.min)}
-              hint="mmol/L"
-            />
-            <StatCard
-              label="Макс"
-              value={stats.max === null ? "—" : formatOptionalNumber(stats.max)}
-              hint="mmol/L"
-            />
-            <StatCard
-              label="Среднее"
-              value={stats.avg === null ? "—" : formatOptionalNumber(stats.avg)}
-              hint="mmol/L"
-            />
-            <StatCard
-              label="В диапазоне"
-              value={
-                rangeStats.total === 0
-                  ? "—"
-                  : `${formatOptionalNumber(rangeStats.percent, 1)}%`
-              }
-              hint={`${rangeStats.inRangeCount} из ${rangeStats.total}`}
-            />
-            <StatCard
-              label="Данные за период"
-              value={
-                periodCompleteness.percent === null
-                  ? "—"
-                  : `${formatOptionalNumber(periodCompleteness.percent, 0)}%`
-              }
-              hint={periodCompleteness.missingLabel}
-            />
+          <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
+            <TimeInRangeDonut data={timeInRange.buckets} total={timeInRange.total} />
+            <div className="grid gap-4 md:grid-cols-2">
+              <MetricCard
+                label="eHbA1c"
+                value={ehbA1c === null ? "—" : `${formatOptionalNumber(ehbA1c, 1)}%`}
+                tooltip="Оценка среднего уровня сахара в крови, рассчитанная по данным мониторинга. Рекомендуемый уровень: ниже 7%"
+              />
+              <MetricCard
+                label="TITR"
+                value={titr === null ? "—" : `${formatOptionalNumber(titr, 0)}%`}
+                tooltip="Более строгий показатель контроля. Показывает время, когда сахар максимально близок к значениям здорового человека"
+              />
+              <MetricCard
+                label="CV"
+                value={cv === null ? "—" : `${formatOptionalNumber(cv, 1)}%`}
+                tooltip="Показатель изменчивости сахара. Чем ниже процент, тем меньше резких скачков и стабильнее ваше состояние"
+              />
+              <MetricCard
+                label="GMI"
+                value={gmi === null ? "—" : `${formatOptionalNumber(gmi, 1)}%`}
+                tooltip="Индекс управления глюкозой: аналог eHbA1c для данных CGM"
+              />
+              <MetricCard
+                label="Средний сахар"
+                value={meanValue === null ? "—" : `${formatOptionalNumber(meanValue, 1)} mmol/L`}
+                tooltip="Среднее арифметическое всех значений глюкозы за выбранный период"
+              />
+              <MetricCard
+                label="Данные за период"
+                value={
+                  periodCompleteness.percent === null
+                    ? "—"
+                    : `${formatOptionalNumber(periodCompleteness.percent, 0)}%`
+                }
+                hint={periodCompleteness.missingLabel}
+                tooltip="Показывает полноту данных за выбранный период и длительность отсутствующих измерений"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-base">События гипо/гипер</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-4 text-sm text-muted-foreground">
+                <div className="flex items-center justify-between">
+                  <span>Гипогликемии (&lt; 3.9)</span>
+                  <span className="text-foreground">
+                    {hypoStats.count} событий • {formatOptionalNumber(hypoStats.avgMinutes, 0)} мин
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Гипергликемии (&gt; 10.0)</span>
+                  <span className="text-foreground">
+                    {hyperStats.count} событий • {formatOptionalNumber(hyperStats.avgMinutes, 0)} мин
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-base">Сводка по еде</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                <div className="rounded-lg border border-dashed border-border bg-muted/30 px-3 py-3">
+                  Нет данных о приемах пищи. Если появятся отметки, здесь будут рассчитаны
+                  показатели до еды, пик после еды и амплитуда.
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>

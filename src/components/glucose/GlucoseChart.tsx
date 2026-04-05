@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Area,
   CartesianGrid,
   Line,
   LineChart,
@@ -205,6 +206,14 @@ export const GlucoseChart = ({
   const rangeMax = Math.max(targetMin, targetMax);
   const baseData = showGaps ? data : data.filter((point) => point.value !== null);
   const segments = simplified ? [] : buildSegments(baseData, rangeMin, rangeMax, showGaps);
+  const hasAgp = baseData.some(
+    (point) =>
+      point.p10 !== undefined &&
+      point.p25 !== undefined &&
+      point.p50 !== undefined &&
+      point.p75 !== undefined &&
+      point.p90 !== undefined
+  );
 
   const ticks = useMemo(() => {
     if (!baseData.length) return [];
@@ -284,6 +293,50 @@ export const GlucoseChart = ({
               />
             </>
           ) : null}
+          {hasAgp ? (
+            <>
+              <Area
+                type="monotone"
+                dataKey="p10"
+                stackId="idr"
+                stroke="none"
+                fill="transparent"
+                isAnimationActive={false}
+              />
+              <Area
+                type="monotone"
+                dataKey="bandIdr"
+                stackId="idr"
+                stroke="none"
+                fill="rgba(37, 99, 235, 0.08)"
+                isAnimationActive={false}
+              />
+              <Area
+                type="monotone"
+                dataKey="p25"
+                stackId="iqr"
+                stroke="none"
+                fill="transparent"
+                isAnimationActive={false}
+              />
+              <Area
+                type="monotone"
+                dataKey="bandIqr"
+                stackId="iqr"
+                stroke="none"
+                fill="rgba(37, 99, 235, 0.16)"
+                isAnimationActive={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="p50"
+                stroke="rgba(37, 99, 235, 0.7)"
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </>
+          ) : null}
           {simplified ? (
             <Line
               type="monotone"
@@ -294,7 +347,7 @@ export const GlucoseChart = ({
               connectNulls={!showGaps}
               strokeLinecap="round"
               strokeLinejoin="round"
-              isAnimationActive={true}
+              isAnimationActive={false}
             />
           ) : (
             segments.map((segment) => (
@@ -309,7 +362,7 @@ export const GlucoseChart = ({
                 connectNulls={true}
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                isAnimationActive={true}
+                isAnimationActive={false}
               />
             ))
           )}
