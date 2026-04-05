@@ -73,6 +73,22 @@ const COLOR_IN = "#3B78FF";
 const COLOR_LOW = "#FF9090";
 const COLOR_VERY_LOW = "#F12828";
 
+const colorForValue = (value: number | null) => {
+  if (value === null) return "hsl(var(--foreground))";
+  if (value >= 13.9) return COLOR_VERY_HIGH;
+  if (value > 10) return COLOR_HIGH;
+  if (value < 3) return COLOR_VERY_LOW;
+  if (value < 3.9) return COLOR_LOW;
+  return COLOR_IN;
+};
+
+const ActiveDot = (props: any) => {
+  const { cx, cy, payload } = props;
+  if (cx === undefined || cy === undefined || !payload) return null;
+  const fill = colorForValue(payload.value ?? null);
+  return <circle cx={cx} cy={cy} r={3} fill={fill} stroke="#fff" strokeWidth={1} />;
+};
+
 
 
 export const GlucoseChart = ({
@@ -356,12 +372,7 @@ export const GlucoseChart = ({
                 stroke="rgba(0,0,0,0)"
                 strokeWidth={0}
                 dot={false}
-                activeDot={({ payload }) => ({
-                  r: 3,
-                  fill: payload?.valueColor ?? "hsl(var(--foreground))",
-                  stroke: "#fff",
-                  strokeWidth: 1,
-                })}
+                activeDot={<ActiveDot />}
                 connectNulls={!showGaps}
                 isAnimationActive={false}
               />
