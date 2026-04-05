@@ -67,9 +67,11 @@ const GlucoseTooltip = ({ active, payload }: { active?: boolean; payload?: any[]
   );
 };
 
-const COLOR_LOW = "rgba(239, 68, 68, 0.95)";
-const COLOR_IN = "rgba(37, 99, 235, 0.95)";
-const COLOR_HIGH = "rgba(245, 158, 11, 0.95)";
+const COLOR_VERY_HIGH = "#FFB800";
+const COLOR_HIGH = "#FFDD86";
+const COLOR_IN = "#3B78FF";
+const COLOR_LOW = "#FF9090";
+const COLOR_VERY_LOW = "#F12828";
 
 
 
@@ -101,17 +103,33 @@ export const GlucoseChart = ({
         if (point.value === null) {
           return {
             ...point,
+            valueVeryLow: null,
             valueLow: null,
             valueInRange: null,
             valueHigh: null,
+            valueVeryHigh: null,
+            valueColor: null,
           };
         }
+
         return {
           ...point,
-          valueLow: point.value < rangeMin ? point.value : null,
+          valueVeryLow: point.value <= 3 ? point.value : null,
+          valueLow: point.value < rangeMin && point.value > 3 ? point.value : null,
           valueInRange:
             point.value >= rangeMin && point.value <= rangeMax ? point.value : null,
-          valueHigh: point.value > rangeMax ? point.value : null,
+          valueHigh: point.value > rangeMax && point.value < 13.9 ? point.value : null,
+          valueVeryHigh: point.value >= 13.9 ? point.value : null,
+          valueColor:
+            point.value >= 13.9
+              ? COLOR_VERY_HIGH
+              : point.value > rangeMax
+                ? COLOR_HIGH
+                : point.value < 3
+                  ? COLOR_VERY_LOW
+                  : point.value < rangeMin
+                    ? COLOR_LOW
+                    : COLOR_IN,
         };
       }),
     [baseData, rangeMin, rangeMax]
@@ -269,6 +287,19 @@ export const GlucoseChart = ({
             <>
               <Line
                 type="monotone"
+                dataKey="valueVeryLow"
+                stroke={COLOR_VERY_LOW}
+                strokeWidth={2.6}
+                dot={false}
+                activeDot={false}
+                tooltipType="none"
+                connectNulls={!showGaps}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                isAnimationActive={false}
+              />
+              <Line
+                type="monotone"
                 dataKey="valueLow"
                 stroke={COLOR_LOW}
                 strokeWidth={2.6}
@@ -308,16 +339,29 @@ export const GlucoseChart = ({
               />
               <Line
                 type="monotone"
+                dataKey="valueVeryHigh"
+                stroke={COLOR_VERY_HIGH}
+                strokeWidth={2.6}
+                dot={false}
+                activeDot={false}
+                tooltipType="none"
+                connectNulls={!showGaps}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                isAnimationActive={false}
+              />
+              <Line
+                type="monotone"
                 dataKey="value"
                 stroke="rgba(0,0,0,0)"
                 strokeWidth={0}
                 dot={false}
-                activeDot={{
+                activeDot={({ payload }) => ({
                   r: 3,
-                  fill: "hsl(var(--foreground))",
+                  fill: payload?.valueColor ?? "hsl(var(--foreground))",
                   stroke: "#fff",
                   strokeWidth: 1,
-                }}
+                })}
                 connectNulls={!showGaps}
                 isAnimationActive={false}
               />
