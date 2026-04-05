@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Health Card — семейный дашборд диабета
 
-## Getting Started
+Минималистичный дашборд для контроля глюкозы с удобной навигацией по дням/неделям, фильтрами и управлением данными.
 
-First, run the development server:
+## Требования
+
+- Node.js 20+
+- npm 10+
+
+## Быстрый старт
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Откройте `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Основные команды
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run dev     # локальная разработка
+npm run build   # сборка
+npm run start   # запуск production сборки
+npm run lint    # линтер
+```
 
-## Learn More
+## Управление данными
 
-To learn more about Next.js, take a look at the following resources:
+Страница управления доступна по адресу:
+`/manage`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Там можно:
+- загрузить `.xlsx` файлы,
+- вставить данные вручную,
+- импортировать все файлы из папки (локально).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Демо на GitHub Pages
 
-## Deploy on Vercel
+Проект настроен на публикацию как статическое демо:
+- GitHub Pages использует экспорт (`output: export`).
+- В демо **не работает импорт папки**, остальные функции доступны.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Как включить GitHub Pages
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. В репозитории GitHub: Settings → Pages
+2. Source: **GitHub Actions**
+
+Далее любое обновление `main` автоматически опубликует демо.

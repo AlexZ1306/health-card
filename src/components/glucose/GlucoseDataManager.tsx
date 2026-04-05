@@ -45,6 +45,7 @@ const deserializePoints = (value: string | null) => {
 };
 
 export const GlucoseDataManager = () => {
+  const isDemo = process.env.NEXT_PUBLIC_DEMO === "true";
   const [excelPoints, setExcelPoints] = useState<GlucosePoint[]>([]);
   const [manualPoints, setManualPoints] = useState<GlucosePoint[]>([]);
   const [manualText, setManualText] = useState("");
@@ -97,6 +98,7 @@ export const GlucoseDataManager = () => {
   };
 
   const handleFolderImport = async () => {
+    if (isDemo) return;
     setIsImporting(true);
     setImportError(null);
     try {
@@ -152,9 +154,15 @@ export const GlucoseDataManager = () => {
               <CardTitle className="text-base">Загрузка Excel</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
-              <Button variant="secondary" onClick={handleFolderImport} disabled={isImporting}>
-                Импортировать все файлы из папки
-              </Button>
+              {!isDemo ? (
+                <Button variant="secondary" onClick={handleFolderImport} disabled={isImporting}>
+                  Импортировать все файлы из папки
+                </Button>
+              ) : (
+                <div className="rounded-md border border-dashed border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  Импорт папки доступен в локальной версии.
+                </div>
+              )}
               <Input
                 type="file"
                 accept=".xlsx"
