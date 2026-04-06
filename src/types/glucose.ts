@@ -58,3 +58,9 @@ export type ChartPoint = {
   bandIqr?: number;
   bandIdr?: number;
 };
+
+export type EventTrendPoint = {
+  timestamp: number;
+  count: number;
+  avgDuration: number | null;
+};

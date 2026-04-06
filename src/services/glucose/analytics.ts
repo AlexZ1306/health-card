@@ -1,4 +1,4 @@
-import { GlucosePoint, ChartPoint, Thresholds } from "@/types/glucose";
+import { GlucosePoint, ChartPoint, Thresholds, EventTrendPoint } from "@/types/glucose";
 
 export type TimeInRangeBucket = {
   key: string;
@@ -26,6 +26,12 @@ export type AgpStats = {
   p50: number;
   p75: number;
   p90: number;
+};
+
+type EventWindow = {
+  start: Date;
+  end: Date;
+  durationMinutes: number;
 };
 
 const percentile = (values: number[], p: number) => {
@@ -192,6 +198,119 @@ export const computeEvents = (
   if (!events.length) return { count: 0, avgMinutes: 0 };
   const total = events.reduce((acc, minutes) => acc + minutes, 0);
   return { count: events.length, avgMinutes: total / events.length };
+};
+
+const extractEventWindows = (
+  points: GlucosePoint[],
+  comparator: (value: number) => boolean,
+  gapMinutes = 10,
+  sampleMinutes = 5
+): EventWindow[] => {
+  if (!points.length) return [];
+  const sorted = [...points].sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
+  const windows: EventWindow[] = [];
+  let currentStart: Date | null = null;
+  let currentCount = 0;
+
+  for (let i = 0; i < sorted.length; i += 1) {
+    const point = sorted[i];
+    const prev = sorted[i - 1];
+
+    if (prev) {
+      const diff = (point.datetime.getTime() - prev.datetime.getTime()) / 60000;
+      if (diff > gapMinutes) {
+        if (currentCount > 0 && currentStart) {
+          windows.push({
+            start: currentStart,
+            end: prev.datetime,
+            durationMinutes: currentCount * sampleMinutes,
+          });
+        }
+        currentStart = null;
+        currentCount = 0;
+      }
+    }
+
+    if (comparator(point.value)) {
+      if (currentCount === 0) {
+        currentStart = point.datetime;
+      }
+      currentCount += 1;
+    } else if (currentCount > 0 && currentStart) {
+      windows.push({
+        start: currentStart,
+        end: prev ? prev.datetime : point.datetime,
+        durationMinutes: currentCount * sampleMinutes,
+      });
+      currentStart = null;
+      currentCount = 0;
+    }
+  }
+
+  if (currentCount > 0 && currentStart) {
+    const last = sorted[sorted.length - 1];
+    windows.push({
+      start: currentStart,
+      end: last.datetime,
+      durationMinutes: currentCount * sampleMinutes,
+    });
+  }
+
+  return windows;
+};
+
+export const buildEventTrendSeries = (
+  points: GlucosePoint[],
+  comparator: (value: number) => boolean,
+  intervalMinutes: number,
+  periodStart?: Date | null,
+  periodEnd?: Date | null,
+  gapMinutes = 10,
+  sampleMinutes = 5
+): EventTrendPoint[] => {
+  if (!points.length || intervalMinutes <= 0) return [];
+  const sorted = [...points].sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
+  const rangeStart = periodStart ?? sorted[0].datetime;
+  const rangeEnd = periodEnd ?? sorted[sorted.length - 1].datetime;
+  const startMs = rangeStart.getTime();
+  const endMs = rangeEnd.getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs > endMs) return [];
+
+  const events = extractEventWindows(sorted, comparator, gapMinutes, sampleMinutes).sort(
+    (a, b) => a.start.getTime() - b.start.getTime()
+  );
+  const stepMs = intervalMinutes * 60 * 1000;
+  const series: EventTrendPoint[] = [];
+  let eventIndex = 0;
+
+  for (let t = startMs; t <= endMs; t += stepMs) {
+    const bucketEnd = t + stepMs;
+    let count = 0;
+    let durationSum = 0;
+
+    while (eventIndex < events.length && events[eventIndex].start.getTime() < t) {
+      eventIndex += 1;
+    }
+
+    let scanIndex = eventIndex;
+    while (scanIndex < events.length) {
+      const eventStart = events[scanIndex].start.getTime();
+      if (eventStart >= bucketEnd) break;
+      count += 1;
+      durationSum += events[scanIndex].durationMinutes;
+      scanIndex += 1;
+    }
+
+    eventIndex = scanIndex;
+
+    series.push({
+      timestamp: t,
+      count,
+      avgDuration: count > 0 ? durationSum / count : null,
+    });
+  }
+
+  return series;
 };
 
 export const computeAgpStats = (points: GlucosePoint[], bucketMinutes = 5) => {
