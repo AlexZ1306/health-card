@@ -10,6 +10,8 @@ import { GlucoseChart } from "@/components/glucose/GlucoseChart";
 import { TimeInRangeDonut } from "@/components/glucose/TimeInRangeDonut";
 import { MetricCard } from "@/components/glucose/MetricCard";
 import { EventsTrendChart } from "@/components/glucose/EventsTrendChart";
+import { EventIntensityChart } from "@/components/glucose/EventIntensityChart";
+import { EventVelocityChart } from "@/components/glucose/EventVelocityChart";
 import { normalizeGlucosePoints } from "@/services/glucose/normalize";
 import { detectGaps } from "@/services/glucose/gaps";
 import {
@@ -26,6 +28,8 @@ import {
   computeTimeInRange,
   computeTitr,
   buildEventTrendSeries,
+  buildEventIntensitySeries,
+  buildEventVelocitySeries,
 } from "@/services/glucose/analytics";
 import {
   DEFAULT_THRESHOLDS,
@@ -780,6 +784,32 @@ export const GlucoseDashboard = () => {
     trendRange,
   ]);
 
+  const intensitySeries = useMemo(
+    () =>
+      buildEventIntensitySeries(
+        filteredPoints,
+        eventKind,
+        thresholds,
+        selectedScale.minutes,
+        trendRange.start,
+        trendRange.end
+      ),
+    [filteredPoints, eventKind, thresholds, selectedScale.minutes, trendRange]
+  );
+
+  const velocitySeries = useMemo(
+    () =>
+      buildEventVelocitySeries(
+        filteredPoints,
+        eventKind,
+        thresholds,
+        selectedScale.minutes,
+        trendRange.start,
+        trendRange.end
+      ),
+    [filteredPoints, eventKind, thresholds, selectedScale.minutes, trendRange]
+  );
+
   const formatMissingDuration = (minutesTotal: number) => {
     if (!Number.isFinite(minutesTotal) || minutesTotal <= 0) {
       return "0м";
@@ -1184,6 +1214,92 @@ export const GlucoseDashboard = () => {
                   singleDay={periodMode === "day" && !!activeBucket}
                   metric="avgDuration"
                   barColor={eventKind === "hypo" ? "#D61B20" : "#FFB800"}
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm overflow-visible">
+              <CardHeader className="flex flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-base">Интенсивность (Сила) события</CardTitle>
+                  <div className="group relative">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted-foreground">
+                      i
+                    </span>
+                    <div className="pointer-events-none absolute left-0 top-6 z-20 w-80 rounded-lg border border-border bg-background p-2 text-xs text-muted-foreground opacity-0 shadow-md transition group-hover:opacity-100">
+                      Интенсивность (AUC) показывает реальную тяжесть нагрузки на организм. В
+                      отличие от длительности, эта метрика учитывает, насколько высоко или
+                      низко "прыгал" сахар. Это лучший индикатор стабильности вашего состояния.
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center rounded-full bg-[#F3F4F6] p-1 text-xs font-medium text-muted-foreground">
+                  {(["hypo", "hyper"] as const).map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() => setEventKind(kind)}
+                      className={`rounded-full px-3 py-1 transition ${
+                        eventKind === kind
+                          ? "bg-foreground text-background shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {kind === "hypo" ? "Гипо" : "Гипер"}
+                    </button>
+                  ))}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <EventIntensityChart
+                  data={intensitySeries}
+                  intervalMinutes={selectedScale.minutes}
+                  singleDay={periodMode === "day" && !!activeBucket}
+                  mode={eventKind}
+                  baseColor={eventKind === "hypo" ? "#D61B20" : "#FFB800"}
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm overflow-visible">
+              <CardHeader className="flex flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-base">Скорость изменения глюкозы</CardTitle>
+                  <div className="group relative">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted-foreground">
+                      i
+                    </span>
+                    <div className="pointer-events-none absolute left-0 top-6 z-20 w-80 rounded-lg border border-border bg-background p-2 text-xs text-muted-foreground opacity-0 shadow-md transition group-hover:opacity-100">
+                      График скорости (Velocity) показывает, насколько агрессивно меняется уровень
+                      сахара. Резкие скачки (высокая скорость) создают гораздо большую нагрузку на
+                      сосудистую систему, чем плавные изменения, даже если они достигают одинаковых
+                      пиковых значений. Это ключевой показатель стабильности вашей терапии.
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center rounded-full bg-[#F3F4F6] p-1 text-xs font-medium text-muted-foreground">
+                  {(["hypo", "hyper"] as const).map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      onClick={() => setEventKind(kind)}
+                      className={`rounded-full px-3 py-1 transition ${
+                        eventKind === kind
+                          ? "bg-foreground text-background shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {kind === "hypo" ? "Гипо" : "Гипер"}
+                    </button>
+                  ))}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <EventVelocityChart
+                  data={velocitySeries}
+                  intervalMinutes={selectedScale.minutes}
+                  singleDay={periodMode === "day" && !!activeBucket}
+                  mode={eventKind}
                 />
               </CardContent>
             </Card>

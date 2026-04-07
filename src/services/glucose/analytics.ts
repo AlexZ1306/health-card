@@ -1,4 +1,11 @@
-import { GlucosePoint, ChartPoint, Thresholds, EventTrendPoint } from "@/types/glucose";
+import {
+  GlucosePoint,
+  ChartPoint,
+  Thresholds,
+  EventTrendPoint,
+  EventIntensityPoint,
+  EventVelocityPoint,
+} from "@/types/glucose";
 
 export type TimeInRangeBucket = {
   key: string;
@@ -33,6 +40,13 @@ type EventWindow = {
   end: Date;
   durationMinutes: number;
 };
+
+type EventVelocityWindow = {
+  start: Date;
+  end: Date;
+  maxVelocity: number;
+};
+
 
 const percentile = (values: number[], p: number) => {
   if (!values.length) return null;
@@ -259,6 +273,81 @@ const extractEventWindows = (
   return windows;
 };
 
+const extractEventVelocityWindows = (
+  points: GlucosePoint[],
+  comparator: (value: number) => boolean,
+  gapMinutes = 10
+): EventVelocityWindow[] => {
+  if (!points.length) return [];
+  const sorted = [...points].sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
+  const windows: EventVelocityWindow[] = [];
+  let currentStart: Date | null = null;
+  let currentEnd: Date | null = null;
+  let currentMax: number | null = null;
+  let prevOutside = false;
+  let prevTime: number | null = null;
+  let prevValue: number | null = null;
+
+  for (const point of sorted) {
+    const time = point.datetime.getTime();
+    if (prevTime !== null) {
+      const diff = (time - prevTime) / 60000;
+      if (diff > gapMinutes) {
+        if (currentStart && currentEnd && currentMax !== null) {
+          windows.push({
+            start: currentStart,
+            end: currentEnd,
+            maxVelocity: currentMax,
+          });
+        }
+        currentStart = null;
+        currentEnd = null;
+        currentMax = null;
+        prevOutside = false;
+      }
+    }
+
+    const outside = comparator(point.value);
+    if (outside) {
+      if (!prevOutside) {
+        currentStart = point.datetime;
+        currentEnd = point.datetime;
+        currentMax = null;
+      }
+      if (prevTime !== null && prevValue !== null) {
+        const minutes = (time - prevTime) / 60000;
+        if (minutes > 0 && minutes <= gapMinutes) {
+          const velocity = Math.abs((point.value - prevValue) / minutes);
+          currentMax = currentMax === null ? velocity : Math.max(currentMax, velocity);
+        }
+      }
+      currentEnd = point.datetime;
+    } else if (prevOutside) {
+      if (currentStart && currentEnd && currentMax !== null) {
+        windows.push({
+          start: currentStart,
+          end: currentEnd,
+          maxVelocity: currentMax,
+        });
+      }
+      currentStart = null;
+      currentEnd = null;
+      currentMax = null;
+    }
+
+    prevOutside = outside;
+    prevTime = time;
+    prevValue = point.value;
+  }
+
+  if (currentStart && currentEnd && currentMax !== null) {
+    windows.push({ start: currentStart, end: currentEnd, maxVelocity: currentMax });
+  }
+
+  return windows;
+};
+
+
 export const buildEventTrendSeries = (
   points: GlucosePoint[],
   comparator: (value: number) => boolean,
@@ -307,6 +396,148 @@ export const buildEventTrendSeries = (
       timestamp: t,
       count,
       avgDuration: count > 0 ? durationSum / count : null,
+    });
+  }
+
+  return series;
+};
+
+export const buildEventIntensitySeries = (
+  points: GlucosePoint[],
+  mode: "hypo" | "hyper",
+  thresholds: Thresholds,
+  intervalMinutes: number,
+  periodStart?: Date | null,
+  periodEnd?: Date | null,
+  gapMinutes = 10,
+  sampleMinutes = 5
+): EventIntensityPoint[] => {
+  if (!points.length || intervalMinutes <= 0) return [];
+  const sorted = [...points].sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
+  const rangeStart = periodStart ?? sorted[0].datetime;
+  const rangeEnd = periodEnd ?? sorted[sorted.length - 1].datetime;
+  const startMs = rangeStart.getTime();
+  const endMs = rangeEnd.getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs > endMs) return [];
+
+  const comparator =
+    mode === "hypo"
+      ? (value: number) => value < thresholds.targetLow
+      : (value: number) => value > thresholds.targetHigh;
+  const threshold = mode === "hypo" ? thresholds.targetLow : thresholds.targetHigh;
+  const stepMs = intervalMinutes * 60 * 1000;
+  const bucketCount = Math.floor((endMs - startMs) / stepMs) + 1;
+  const auc = new Array<number>(bucketCount).fill(0);
+  const sumValue = new Array<number>(bucketCount).fill(0);
+  const sampleCount = new Array<number>(bucketCount).fill(0);
+  const eventCount = new Array<number>(bucketCount).fill(0);
+  const extremeValue = new Array<number>(bucketCount).fill(
+    mode === "hyper" ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY
+  );
+  const weight = sampleMinutes / 5;
+
+  let prevOutside = false;
+  let prevTime: number | null = null;
+
+  for (const point of sorted) {
+    const time = point.datetime.getTime();
+    if (time < startMs || time > endMs) continue;
+    if (prevTime !== null) {
+      const diff = (time - prevTime) / 60000;
+      if (diff > gapMinutes) {
+        prevOutside = false;
+      }
+    }
+    const outside = comparator(point.value);
+    if (outside) {
+      const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor((time - startMs) / stepMs)));
+      const delta = mode === "hyper" ? point.value - threshold : threshold - point.value;
+      auc[idx] += Math.max(0, delta) * weight;
+      sumValue[idx] += point.value;
+      sampleCount[idx] += 1;
+      extremeValue[idx] =
+        mode === "hyper"
+          ? Math.max(extremeValue[idx], point.value)
+          : Math.min(extremeValue[idx], point.value);
+      if (!prevOutside) {
+        eventCount[idx] += 1;
+      }
+    }
+    prevOutside = outside;
+    prevTime = time;
+  }
+
+  const series: EventIntensityPoint[] = [];
+  for (let i = 0; i < bucketCount; i += 1) {
+    const hasSamples = sampleCount[i] > 0;
+    series.push({
+      timestamp: startMs + i * stepMs,
+      auc: hasSamples ? auc[i] : null,
+      avgValue: hasSamples ? sumValue[i] / sampleCount[i] : null,
+      extremeValue: hasSamples ? extremeValue[i] : null,
+      eventCount: eventCount[i],
+    });
+  }
+
+  return series;
+};
+
+export const buildEventVelocitySeries = (
+  points: GlucosePoint[],
+  mode: "hypo" | "hyper",
+  thresholds: Thresholds,
+  intervalMinutes: number,
+  periodStart?: Date | null,
+  periodEnd?: Date | null,
+  gapMinutes = 10
+): EventVelocityPoint[] => {
+  if (!points.length || intervalMinutes <= 0) return [];
+  const sorted = [...points].sort((a, b) => a.datetime.getTime() - b.datetime.getTime());
+  const rangeStart = periodStart ?? sorted[0].datetime;
+  const rangeEnd = periodEnd ?? sorted[sorted.length - 1].datetime;
+  const startMs = rangeStart.getTime();
+  const endMs = rangeEnd.getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs > endMs) return [];
+
+  const comparator =
+    mode === "hypo"
+      ? (value: number) => value < thresholds.targetLow
+      : (value: number) => value > thresholds.targetHigh;
+  const events = extractEventVelocityWindows(sorted, comparator, gapMinutes).sort(
+    (a, b) => a.start.getTime() - b.start.getTime()
+  );
+
+  const stepMs = intervalMinutes * 60 * 1000;
+  const series: EventVelocityPoint[] = [];
+  let eventIndex = 0;
+
+  for (let t = startMs; t <= endMs; t += stepMs) {
+    const bucketEnd = t + stepMs;
+    let maxVelocity: number | null = null;
+    let eventCount = 0;
+
+    while (eventIndex < events.length && events[eventIndex].start.getTime() < t) {
+      eventIndex += 1;
+    }
+
+    let scanIndex = eventIndex;
+    while (scanIndex < events.length) {
+      const eventStart = events[scanIndex].start.getTime();
+      if (eventStart >= bucketEnd) break;
+      const velocity = events[scanIndex].maxVelocity;
+      if (Number.isFinite(velocity)) {
+        maxVelocity = maxVelocity === null ? velocity : Math.max(maxVelocity, velocity);
+        eventCount += 1;
+      }
+      scanIndex += 1;
+    }
+
+    eventIndex = scanIndex;
+
+    series.push({
+      timestamp: t,
+      maxVelocity,
+      eventCount,
     });
   }
 

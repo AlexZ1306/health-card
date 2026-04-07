@@ -64,3 +64,17 @@ export type EventTrendPoint = {
   count: number;
   avgDuration: number | null;
 };
+
+export type EventIntensityPoint = {
+  timestamp: number;
+  auc: number | null;
+  avgValue: number | null;
+  extremeValue: number | null;
+  eventCount: number;
+};
+
+export type EventVelocityPoint = {
+  timestamp: number;
+  maxVelocity: number | null;
+  eventCount: number;
+};
