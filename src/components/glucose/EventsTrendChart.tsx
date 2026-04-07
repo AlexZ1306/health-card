@@ -1,16 +1,16 @@
 "use client";
 
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
-  Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import { format } from "date-fns";
-import { useMemo, useState } from "react";
+import { memo, useMemo } from "react";
 import { EventTrendPoint } from "@/types/glucose";
 import { formatOptionalNumber } from "@/utils/format";
 
@@ -29,7 +29,7 @@ const getTickFormat = (intervalMinutes: number, singleDay?: boolean) => {
   return "HH:mm";
 };
 
-export const EventsTrendChart = ({
+export const EventsTrendChart = memo(({
   data,
   intervalMinutes,
   singleDay,
@@ -45,8 +45,6 @@ export const EventsTrendChart = ({
   }
 
   const tickFormat = getTickFormat(intervalMinutes, singleDay);
-  const [cursorX, setCursorX] = useState<number | null>(null);
-
   const chartData = useMemo(
     () =>
       data.map((point) => {
@@ -110,25 +108,7 @@ export const EventsTrendChart = ({
   return (
     <div className="relative h-[260px] w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart
-          data={chartData}
-          onMouseMove={(state) => {
-            if (!state?.isTooltipActive) {
-              if (cursorX !== null) setCursorX(null);
-              return;
-            }
-            const nextX =
-              typeof state.chartX === "number"
-                ? state.chartX
-                : typeof state.activeCoordinate?.x === "number"
-                  ? state.activeCoordinate.x
-                  : null;
-            if (typeof nextX === "number" && nextX !== cursorX) {
-              setCursorX(nextX);
-            }
-          }}
-          onMouseLeave={() => setCursorX(null)}
-        >
+        <BarChart data={chartData}>
           <CartesianGrid strokeDasharray="4 6" stroke="hsl(var(--border))" />
           <XAxis
             dataKey="timestamp"
@@ -186,28 +166,19 @@ export const EventsTrendChart = ({
             }}
             shared={true}
             isAnimationActive={false}
-            cursor={false}
+            cursor={{ fill: "rgba(0,0,0,0.03)" }}
           />
-          <Line
-            type="monotone"
+          <Bar
             dataKey="value"
-            stroke={barColor}
-            strokeWidth={2.6}
-            dot={false}
-            activeDot={{ r: 3 }}
-            connectNulls={false}
+            fill={barColor}
+            radius={[6, 6, 0, 0]}
+            maxBarSize={36}
             isAnimationActive={false}
           />
-        </LineChart>
+        </BarChart>
       </ResponsiveContainer>
-      {cursorX !== null ? (
-        <div
-          className="pointer-events-none absolute inset-y-0 z-10"
-          style={{ left: cursorX }}
-        >
-          <div className="h-full w-px bg-border" />
-        </div>
-      ) : null}
     </div>
   );
-};
+});
+
+EventsTrendChart.displayName = "EventsTrendChart";
